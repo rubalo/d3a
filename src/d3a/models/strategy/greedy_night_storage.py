@@ -13,7 +13,9 @@ class NightStorageStrategy(BaseStrategy):
         self.state = StorageState(capacity=2 * ConstSettings.STORAGE_CAPACITY)
         self.selling_price = 30
 
-    def event_tick(self, *, area):
+    def event_tick(self, *, area_id):
+        area = self.get_area_from_area_id(area_id)
+
         # Taking the cheapest offers in every market currently open and building the average
         avg_cheapest_offer_price = self.find_avg_cheapest_offers()
         # Check if there are cheap offers to buy

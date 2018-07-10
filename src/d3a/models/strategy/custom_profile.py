@@ -125,7 +125,8 @@ class CustomProfileStrategy(BaseStrategy):
     def event_market_cycle(self):
         self._update_slots()
 
-    def event_tick(self, *, area):
+    def event_tick(self, *, area_id):
+        area = self.get_area_from_area_id(area_id)
         if area == self.owner.parent:
             for slot, market in area.markets.items():
                 balance = self.slot_prod[slot] - self.slot_load[slot]

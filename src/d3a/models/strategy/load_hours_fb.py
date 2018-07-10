@@ -59,7 +59,7 @@ class LoadHoursStrategy(BaseStrategy):
         offers = market.most_affordable_offers
         return random.choice(offers)
 
-    def event_tick(self, *, area):
+    def event_tick(self, *, area_id):
 
         if self.energy_requirement <= 0:
             return

@@ -13,7 +13,8 @@ class PredefLoadHouseholdStrategy(StorageStrategy):
         self.risk = risk
         self.bought_in_market = set()
 
-    def event_tick(self, *, area):
+    def event_tick(self, *, area_id):
+        area = self.get_area_from_area_id(area_id)
         # Only trade after the second tick
         tick_in_slot = area.current_tick % area.config.ticks_per_slot
         if tick_in_slot < 3:

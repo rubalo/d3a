@@ -43,7 +43,8 @@ class Area:
                  strategy: BaseStrategy = None,
                  appliance: BaseAppliance = None,
                  config: SimulationConfig = None,
-                 budget_keeper=None):
+                 budget_keeper=None,
+                 spawn_process=False):
         self.active = False
         self.log = TaggedLogWrapper(log, name)
         self.current_tick = 0
@@ -70,16 +71,21 @@ class Area:
         self.listeners = []
         self._accumulated_past_price = 0
         self._accumulated_past_energy = 0
-        self.area_queue = Queue()
-        self.area_process = Process(target=self.process_event_loop, args=(self.area_queue, ))
-        self.area_process.start()
+        if spawn_process:
+            self.area_queue = Queue()
+            self.area_process = Process(target=self.process_event_loop, args=(self.area_queue, ))
+            self.area_process.start()
+        else:
+            self.area_process = None
 
     def process_event_loop(self, queue):
         while True:
             print(self.name)
             event = queue.get()
             print(event)
-            self._broadcast_notification(*event)
+            event_type = event[0]
+            keywordargs = event[1]
+            self._broadcast_notification(event_type=event_type, **keywordargs)
 
     def activate(self):
         for attr, kind in [(self.strategy, 'Strategy'), (self.appliance, 'Appliance')]:
@@ -334,7 +340,7 @@ class Area:
     def tick(self):
         if self.current_tick % self.config.ticks_per_slot == 0:
             self._cycle_markets()
-        self._broadcast_notification(AreaEvent.TICK, area=self)
+        self._broadcast_notification(AreaEvent.TICK, area_id=self.area_id)
         self.current_tick += 1
 
     def report_accounting(self, market, reporter, value, time=None):

@@ -14,7 +14,8 @@ class PermanentLoadStrategy(BaseStrategy):
 
         self.bought_in_market = set()
 
-    def event_tick(self, *, area):
+    def event_tick(self, *, area_id):
+        area = self.get_area_from_area_id(area_id)
         try:
             for i, market in enumerate(area.markets.values()):
                 if i + 1 > self.pre_buy_range:

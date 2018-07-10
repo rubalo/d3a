@@ -29,8 +29,9 @@ class FridgeStrategy(BaseStrategy):
     def event_activate(self):
         self.open_spot_markets = list(self.area.markets.values())
 
-    def event_tick(self, *, area):
+    def event_tick(self, *, area_id):
         self.state.tick(self.area)
+        area = self.get_area_from_area_id(area_id)
 
         # Only trade after the 4th tick
         tick_in_slot = area.current_tick % area.config.ticks_per_slot

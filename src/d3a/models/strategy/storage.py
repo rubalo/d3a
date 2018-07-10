@@ -72,7 +72,8 @@ class StorageStrategy(BaseStrategy):
                for _, break_even_point in break_even.items()):
             raise ValueError("Break even point should be positive energy rate values.")
 
-    def event_tick(self, *, area):
+    def event_tick(self, *, area_id):
+        area = self.get_area_from_area_id(area_id)
         # Check if there are cheap offers to buy
         self.buy_energy()
         self.state.tick(area)

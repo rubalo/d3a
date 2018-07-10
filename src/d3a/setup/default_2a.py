@@ -14,7 +14,8 @@ def get_setup(config):
         [
             Area(
                 'House 1',
-                [
+                spawn_process=True,
+                children=[
                     Area('H1 General Load', strategy=LoadHoursStrategy(avg_power_W=200,
                                                                        hrs_per_day=6,
                                                                        hrs_of_day=list(
@@ -29,7 +30,8 @@ def get_setup(config):
             ),
             Area(
                 'House 2',
-                [
+                spawn_process=True,
+                children=[
                     Area('H2 General Load', strategy=LoadHoursStrategy(avg_power_W=200,
                                                                        hrs_per_day=4,
                                                                        hrs_of_day=list(

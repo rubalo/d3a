@@ -12,7 +12,8 @@ class BuyStrategy(BaseStrategy):
         self.buy_chance = buy_chance
         self.max_energy = max_energy
 
-    def event_tick(self, *, area):
+    def event_tick(self, *, area_id):
+        area = self.get_area_from_area_id(area_id)
         if random.random() <= self.buy_chance:
             time, market = random.choice(list(area.markets.items()))
             if (
@@ -42,7 +43,8 @@ class OfferStrategy(BaseStrategy):
     def non_attr_parameters(self):
         return {'price_fraction_choice': self.price_fraction}
 
-    def event_tick(self, *, area):
+    def event_tick(self, *, area_id):
+        area = self.get_area_from_area_id(area_id)
         if random.random() <= self.offer_chance:
             energy = random.randint(*self.energy_range)
             time, market = random.choice(list(area.markets.items()))

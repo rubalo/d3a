@@ -26,3 +26,11 @@ class AreaBehaviorBase:
                         self.__class__.__name__)
             return log
         return self._log
+
+    def get_area_from_area_id(self, area_id):
+        if area_id == self.owner.area_id:
+            return self.owner
+        elif self.area is not None and area_id == self.area.area_id:
+            return self.area
+        else:
+            return

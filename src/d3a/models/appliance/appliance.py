@@ -177,10 +177,11 @@ class Appliance(BaseAppliance):
         else:
             log.error("Usage generator uninitialized")
 
-    def event_tick(self, *, area: Area):
+    def event_tick(self, *, area_id):
 
-        if area is None:
+        if area_id is None:
             return
+        area = self.get_area_from_area_id(area_id)
 
         if self.last_reported_tick == self.report_frequency:
             # report power generation/consumption to area

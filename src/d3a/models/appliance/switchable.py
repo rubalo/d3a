@@ -7,6 +7,6 @@ class SwitchableAppliance(SwitchableMixin, SimpleAppliance):
     def __init__(self):
         super().__init__()
 
-    def event_tick(self, *, area):
+    def event_tick(self, *, area_id):
         if self.is_on:
-            super().event_tick(area=area)
+            super().event_tick(area_id=area_id)

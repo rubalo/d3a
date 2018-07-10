@@ -47,7 +47,7 @@ class EventMixin:
         self.log.debug("Dispatching event %s", event_type.name)
         self._event_mapping[event_type](**kwargs)
 
-    def event_tick(self, *, area):
+    def event_tick(self, *, area_id):
         pass
 
     def event_market_cycle(self):

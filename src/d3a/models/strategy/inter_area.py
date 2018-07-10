@@ -230,7 +230,9 @@ class InterAreaAgent(BaseStrategy):
         """Prevent IAAEngines from trading their counterpart's offers"""
         return all(offer.id not in engine.offered_offers for engine in self.engines)
 
-    def event_tick(self, *, area):
+    def event_tick(self, *, area_id):
+        print("IAA TICK: " + str(area_id))
+        area = self.get_area_from_area_id(area_id)
         if area != self.owner:
             # We're connected to both areas but only want tick events from our owner
             return

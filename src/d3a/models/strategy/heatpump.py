@@ -18,7 +18,8 @@ class HeatPumpStrategy(BaseStrategy):
         # The current temperature of the water storage coupled to the heat pump
         self.storage_temp = ConstSettings.INITIAL_PUMP_STORAGE_TEMP
 
-    def event_tick(self, *, area):
+    def event_tick(self, *, area_id):
+        area = self.get_area_from_area_id(area_id)
         # Temperature losses are negligible (0,04 W * m^2)/mK
 
         # Only trade in later half of slot

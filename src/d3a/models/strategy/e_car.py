@@ -31,7 +31,7 @@ class ECarStrategy(StorageStrategy):
         self.depart_time = depart_time
         self.connected_to_grid = False
 
-    def event_tick(self, *, area):
+    def event_tick(self, *, area_id):
         current_time = self.area.now.hour
         if not self.connected_to_grid:
             # Car arrives at charging station at
