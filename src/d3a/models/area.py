@@ -3,6 +3,7 @@ from collections import OrderedDict, defaultdict
 from logging import getLogger
 from random import random
 from typing import Dict, List, Optional, Union  # noqa
+from multiprocessing import Process, Queue
 
 from cached_property import cached_property
 from pendulum.interval import Interval
@@ -69,6 +70,16 @@ class Area:
         self.listeners = []
         self._accumulated_past_price = 0
         self._accumulated_past_energy = 0
+        self.area_queue = Queue()
+        self.area_process = Process(target=self.process_event_loop, args=(self.area_queue, ))
+        self.area_process.start()
+
+    def process_event_loop(self, queue):
+        while True:
+            print(self.name)
+            event = queue.get()
+            print(event)
+            self._broadcast_notification(*event)
 
     def activate(self):
         for attr, kind in [(self.strategy, 'Strategy'), (self.appliance, 'Appliance')]:
@@ -275,6 +286,8 @@ class Area:
                         # Attach agent to own IAA list
                         self.inter_area_agents[market].append(iaa)
                         # And also to parents to allow events to flow form both markets
+                        """ IPC HERE """
+                        # parent needs to read data from the queue to synchronize markets
                         self.parent.inter_area_agents[self.parent.markets[timeframe]].append(iaa)
                         if self.parent:
                             # Add inter area appliance to report energy
@@ -336,13 +349,15 @@ class Area:
     def _broadcast_notification(self, event_type: Union[MarketEvent, AreaEvent], **kwargs):
         # Broadcast to children in random order to ensure fairness
         for child in sorted(self.children, key=lambda _: random()):
-            child.event_listener(event_type, **kwargs)
+            if child.area_process is not None:
+                child.area_queue.put([event_type, kwargs])
+            else:
+                child.event_listener(event_type, **kwargs)
         # Also broadcast to IAAs. Again in random order
         for market, agents in self.inter_area_agents.items():
             if market.time_slot not in self.markets:
                 # exclude past IAAs
                 continue
-
             for agent in sorted(agents, key=lambda _: random()):
                 agent.event_listener(event_type, **kwargs)
         for listener in self.listeners:

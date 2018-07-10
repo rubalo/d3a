@@ -33,6 +33,7 @@ class IAAEngine:
         )
 
     def _forward_offer(self, offer, offer_id):
+        """ IPC HERE """
         forwarded_offer = self.markets.target.offer(
             offer.price + (offer.price * (self.transfer_fee_pct / 100)),
             offer.energy,
@@ -45,6 +46,7 @@ class IAAEngine:
 
     def tick(self, *, area):
         # Store age of offer
+        """ IPC HERE """
         for offer in self.markets.source.sorted_offers:
             if offer.id not in self.offer_age:
                 self.offer_age[offer.id] = area.current_tick
@@ -55,6 +57,7 @@ class IAAEngine:
                 continue
             if area.current_tick - age < self.min_offer_age:
                 continue
+            """ IPC HERE """
             offer = self.markets.source.offers.get(offer_id)
             if not offer:
                 # Offer has gone - remove from age dict
@@ -84,6 +87,7 @@ class IAAEngine:
                     self.owner.log.error("Not forwarding residual offer for "
                                          "{} (Forwarded offer not found)".format(trade.offer))
 
+            """ IPC HERE """
             trade_source = self.owner.accept_offer(
                 self.markets.source,
                 offer_info.source_offer,
@@ -106,6 +110,7 @@ class IAAEngine:
                         "Expected residual offer in source market trade {} - deleting "
                         "corresponding offer in target market".format(trade_source)
                     )
+                    """ IPC HERE """
                     self.markets.target.delete_offer(residual_info.forwarded)
 
             current_offer_info = self.offered_offers.pop(offer_info.source_offer.id, None)
@@ -122,6 +127,7 @@ class IAAEngine:
         elif trade.offer.id == offer_info.source_offer.id:
             # Offer was bought in source market by another party
             try:
+                """ IPC HERE """
                 self.markets.target.delete_offer(offer_info.target_offer)
             except OfferNotFoundException:
                 pass
@@ -147,6 +153,7 @@ class IAAEngine:
             # Offer in source market of an offer we're already offering in the target market
             # was deleted - also delete in target market
             try:
+                """ IPC HERE """
                 self.markets.target.delete_offer(offer_info.target_offer)
             except MarketException:
                 self.owner.log.exception("Error deleting InterAreaAgent offer")
