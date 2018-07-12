@@ -169,7 +169,7 @@ class StorageStrategy(BaseStrategy):
             return most_expensive_market
         else:
             # Sell on the most recent future market
-            return list(self.area.markets.values())[0]
+            return self.area.next_market
 
     def _calculate_energy_to_sell(self, energy, target_market):
         # If no energy is passed, try to sell all the Energy left in the storage

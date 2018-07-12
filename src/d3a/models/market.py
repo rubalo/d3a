@@ -12,7 +12,7 @@ from terminaltables.other_tables import SingleTable
 
 from d3a.exceptions import InvalidOffer, MarketReadOnlyException, OfferNotFoundException, \
     InvalidTrade
-from d3a.models.events import MarketEvent, OfferEvent
+from d3a.models.events import MarketEvent
 
 
 log = getLogger(__name__)
@@ -22,41 +22,17 @@ OFFER_PRICE_THRESHOLD = 0.00001
 
 
 class Offer:
-    def __init__(self, id, price, energy, seller, market=None):
+    def __init__(self, id, price, energy, seller):
         self.id = str(id)
         self.price = price
         self.energy = energy
         self.seller = seller
-        self.market = market
-        self._listeners = defaultdict(set)  # type: Dict[OfferEvent, Set[callable]]
 
     def __repr__(self):
         return "<Offer('{s.id!s:.6s}', '{s.energy} kWh@{s.price}', '{s.seller}'>".format(s=self)
 
     def __str__(self):
         return "{{{s.id!s:.6s}}} [{s.seller}]: {s.energy} kWh @ {s.price}".format(s=self)
-
-    def add_listener(self, event: Union[OfferEvent, List[OfferEvent]], listener):
-        if isinstance(event, (tuple, list)):
-            for ev in event:
-                self.add_listener(ev, listener)
-        else:
-            self._listeners[event].add(listener)
-
-    def _call_listeners(self, event: OfferEvent, **kwargs):
-        # Call listeners in random order to ensure fairness
-        for listener in sorted(self._listeners[event], key=lambda l: random.random()):
-            listener(**kwargs, offer=self)
-
-    # XXX: This might be unreliable - decide after testing
-    def __del__(self):
-        self._call_listeners(OfferEvent.DELETED)
-
-    def _traded(self, trade: 'Trade', market: 'Market'):
-        """
-        Called by `Market` to inform listeners about the trade
-        """
-        self._call_listeners(OfferEvent.ACCEPTED, market=market, trade=trade)
 
 
 class Trade(namedtuple('Trade', ('id', 'time', 'offer', 'seller', 'buyer', 'residual'))):
@@ -83,7 +59,11 @@ class Trade(namedtuple('Trade', ('id', 'time', 'offer', 'seller', 'buyer', 'resi
 
 
 class Market:
+    _market_id_counter = 1
+
     def __init__(self, time_slot=None, area=None, notification_listener=None, readonly=False):
+        self.market_id = Market._market_id_counter
+        Market._market_id_counter += 1
         self.area = area
         self.time_slot = time_slot
         self.readonly = readonly
@@ -118,14 +98,14 @@ class Market:
     def _notify_listeners(self, event, **kwargs):
         # Deliver notifications in random order to ensure fairness
         for listener in sorted(self.notification_listeners, key=lambda l: random.random()):
-            listener(event, market=self, **kwargs)
+            listener(event, market_id=self.market_id, **kwargs)
 
     def offer(self, price: float, energy: float, seller: str) -> Offer:
         if self.readonly:
             raise MarketReadOnlyException()
         if energy <= 0:
             raise InvalidOffer()
-        offer = Offer(str(uuid.uuid4()), price, energy, seller, self)
+        offer = Offer(str(uuid.uuid4()), price, energy, seller)
         with self.offer_lock:
             self.offers[offer.id] = offer
             self._sorted_offers = sorted(self.offers.values(), key=lambda o: o.price / o.energy)
@@ -174,15 +154,13 @@ class Market:
                             offer.id,
                             offer.price / offer.energy * energy,
                             energy,
-                            offer.seller,
-                            offer.market
+                            offer.seller
                         )
                         residual_offer = Offer(
                             str(uuid.uuid4()),
                             offer.price / offer.energy * (offer.energy - energy),
                             offer.energy - energy,
-                            offer.seller,
-                            offer.market
+                            offer.seller
                         )
                         self.offers[residual_offer.id] = residual_offer
                         log.info("[OFFER][CHANGED] %s -> %s", original_offer, residual_offer)
@@ -216,7 +194,6 @@ class Market:
             self._update_min_max_avg_trade_prices(offer.price / offer.energy)
             # Recalculate offer min/max price since offer was removed
             self._update_min_max_avg_offer_prices()
-        offer._traded(trade, self)
         self._notify_listeners(MarketEvent.TRADE, trade=trade)
         return trade
 

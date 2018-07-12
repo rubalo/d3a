@@ -36,6 +36,51 @@ DEFAULT_CONFIG = SimulationConfig(
 )
 
 
+class MarketSerializer:
+    def __init__(self, market):
+        self.time_slot = market.time_slot
+        self.readonly = market.readonly
+        self.market_id = market.market_id
+        self.offers = market.offers
+        self.trades = market.trades
+        self.ious = dict(market.ious)
+        self.traded_energy = dict(market.traded_energy)
+        self.actual_energy = dict(market.actual_energy)
+        self.accumulated_actual_energy_agg = market.accumulated_actual_energy_agg
+        self.min_trade_price = market.min_trade_price
+        self._avg_trade_price = market._avg_trade_price
+        self.max_trade_price = market.max_trade_price
+        self.min_offer_price = market.min_offer_price
+        self._avg_offer_price = market._avg_offer_price
+        self.max_offer_price = market.max_offer_price
+        self._sorted_offers = market._sorted_offers
+        self.accumulated_trade_price = market.accumulated_trade_price
+        self.accumulated_trade_energy = market.accumulated_trade_energy
+
+
+def market_factory(serialized_market, area, broadcasts):
+    market = Market(serialized_market.time_slot, area, broadcasts, serialized_market.readonly)
+    market.time_slot = serialized_market.time_slot
+    market.readonly = serialized_market.readonly
+    market.market_id = serialized_market.market_id
+    market.offers = serialized_market.offers
+    market.trades = serialized_market.trades
+    market.ious.update(serialized_market.ious)
+    market.traded_energy.update(serialized_market.traded_energy)
+    market.actual_energy.update(serialized_market.actual_energy)
+    market.accumulated_actual_energy_agg = serialized_market.accumulated_actual_energy_agg
+    market.min_trade_price = serialized_market.min_trade_price
+    market._avg_trade_price = serialized_market._avg_trade_price
+    market.max_trade_price = serialized_market.max_trade_price
+    market.min_offer_price = serialized_market.min_offer_price
+    market._avg_offer_price = serialized_market._avg_offer_price
+    market.max_offer_price = serialized_market.max_offer_price
+    market._sorted_offers = serialized_market._sorted_offers
+    market.accumulated_trade_price = serialized_market.accumulated_trade_price
+    market.accumulated_trade_energy = serialized_market.accumulated_trade_energy
+    return market
+
+
 class Area:
     _area_id_counter = 1
 
@@ -60,7 +105,7 @@ class Area:
         self.strategy = strategy
         self.appliance = appliance
         self._config = config
-
+        self.spawn_process = spawn_process
         self.budget_keeper = budget_keeper
         if budget_keeper:
             self.budget_keeper.area = self
@@ -71,21 +116,32 @@ class Area:
         self.listeners = []
         self._accumulated_past_price = 0
         self._accumulated_past_energy = 0
+        self.spawn_process = spawn_process
         if spawn_process:
             self.area_queue = Queue()
-            self.area_process = Process(target=self.process_event_loop, args=(self.area_queue, ))
+            self.market_queue = Queue()
+            from multiprocessing import Event
+            self.event = Event()
+            self.area_process = Process(target=self.process_event_loop,
+                                        args=(self.area_queue, self.market_queue, self.event))
             self.area_process.start()
         else:
             self.area_process = None
 
-    def process_event_loop(self, queue):
+    def process_event_loop(self, event_queue, market_queue, event):
         while True:
-            print(self.name)
-            event = queue.get()
-            print(event)
-            event_type = event[0]
-            keywordargs = event[1]
-            self._broadcast_notification(event_type=event_type, **keywordargs)
+            if not market_queue.empty():
+                markets = market_queue.get()
+                self.markets = {market.time_slot: market_factory(market,
+                                                                 self,
+                                                                 self._broadcast_notification)
+                                for market in markets}
+            if not event_queue.empty() and not event.is_set():
+                area_event = event_queue.get()
+                event_type = area_event[0]
+                keywordargs = area_event[1]
+                self.event_listener(event_type=event_type, **keywordargs)
+                event.set()
 
     def activate(self):
         for attr, kind in [(self.strategy, 'Strategy'), (self.appliance, 'Appliance')]:
@@ -113,6 +169,7 @@ class Area:
             self.log.warning("No strategy. Using inter area agent.")
         self.log.info('Activating area')
         self.active = True
+
         self._broadcast_notification(AreaEvent.ACTIVATE)
 
     def __repr__(self):
@@ -275,7 +332,7 @@ class Area:
         # Markets range from one slot to MARKET_SLOT_COUNT into the future
         for offset in (self.config.slot_length * i for i in range(self.config.market_count)):
             timeframe = now.add_timedelta(offset)
-            if timeframe not in self.markets:
+            if timeframe not in self.markets or self.markets[timeframe] is None:
                 # Create markets for missing slots
                 market = Market(timeframe, self,
                                 notification_listener=self._broadcast_notification)
@@ -304,6 +361,12 @@ class Area:
                     t=timeframe,
                     format="%H:%M" if self.config.slot_length.total_seconds() > 60 else "%H:%M:%S"
                 ))
+
+        # TODO: Market serializer
+        if self.spawn_process:
+            self.market_queue.put([MarketSerializer(market)
+                                   for _, market in self.markets.items()],
+                                  block=False)
 
         # Force market cycle event in case this is the first market slot
         if (changed or len(self.past_markets.keys()) == 0) and _trigger_event:
@@ -354,11 +417,18 @@ class Area:
 
     def _broadcast_notification(self, event_type: Union[MarketEvent, AreaEvent], **kwargs):
         # Broadcast to children in random order to ensure fairness
+        children_to_wait = []
         for child in sorted(self.children, key=lambda _: random()):
             if child.area_process is not None:
                 child.area_queue.put([event_type, kwargs])
+                children_to_wait.append(child)
             else:
                 child.event_listener(event_type, **kwargs)
+
+        if children_to_wait != []:
+            for child in children_to_wait:
+                child.event.wait()
+                child.event.clear()
         # Also broadcast to IAAs. Again in random order
         for market, agents in self.inter_area_agents.items():
             if market.time_slot not in self.markets:

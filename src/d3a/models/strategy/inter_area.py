@@ -158,14 +158,15 @@ class IAAEngine:
             except MarketException:
                 self.owner.log.exception("Error deleting InterAreaAgent offer")
 
-    def event_offer_changed(self, *, market, existing_offer, new_offer):
-        if market == self.markets.target and existing_offer.seller == self.owner.name:
+    def event_offer_changed(self, *, market_id, existing_offer, new_offer):
+        if market_id == self.markets.target.market_id and existing_offer.seller == self.owner.name:
             # one of our forwarded offers was split, so save the residual offer
             # for handling the upcoming trade event
             assert existing_offer.id not in self.trade_residual, \
                    "Offer should only change once before each trade."
             self.trade_residual[existing_offer.id] = new_offer
-        elif market == self.markets.source and existing_offer.id in self.offered_offers:
+        elif market_id == self.markets.source.market_id and \
+                existing_offer.id in self.offered_offers:
             # an offer in the source market was split - delete the corresponding offer
             # in the target market and forward the new residual offer
             if new_offer.id in self.ignored_offers:
@@ -231,7 +232,7 @@ class InterAreaAgent(BaseStrategy):
         return all(offer.id not in engine.offered_offers for engine in self.engines)
 
     def event_tick(self, *, area_id):
-        print("IAA TICK: " + str(area_id))
+        # print("IAA TICK: " + str(area_id))
         area = self.get_area_from_area_id(area_id)
         if area != self.owner:
             # We're connected to both areas but only want tick events from our owner
@@ -242,7 +243,7 @@ class InterAreaAgent(BaseStrategy):
         for engine in self.engines:
             engine.tick(area=area)
 
-    def event_trade(self, *, market, trade, offer=None):
+    def event_trade(self, *, market_id, trade, offer=None):
         for engine in self.engines:
             engine.event_trade(trade=trade)
 
@@ -250,8 +251,8 @@ class InterAreaAgent(BaseStrategy):
         for engine in self.engines:
             engine.event_offer_deleted(offer=offer)
 
-    def event_offer_changed(self, *, market, existing_offer, new_offer):
+    def event_offer_changed(self, *, market_id, existing_offer, new_offer):
         for engine in self.engines:
-            engine.event_offer_changed(market=market,
+            engine.event_offer_changed(market_id=market_id,
                                        existing_offer=existing_offer,
                                        new_offer=new_offer)

@@ -177,8 +177,14 @@ class BaseStrategy(TriggerMixin, EventMixin, AreaBehaviorBase):
         if self.enabled or event_type in (AreaEvent.ACTIVATE, MarketEvent.TRADE):
             super().event_listener(event_type, **kwargs)
 
-    def event_trade(self, *, market, trade):
-        self.offers.on_trade(market, trade)
+    def event_trade(self, *, market_id, trade):
+        for market in self.area.markets.values():
+            if market.market_id == market_id:
+                self.offers.on_trade(market, trade)
 
-    def event_offer_changed(self, *, market, existing_offer, new_offer):
-        self.offers.on_offer_changed(market, existing_offer, new_offer)
+        for market in self.owner.markets.values():
+            if market.market_id == market_id:
+                self.offers.on_trade(market, trade)
+
+    def event_offer_changed(self, *, market_id, existing_offer, new_offer):
+        self.offers.on_offer_changed(market_id, existing_offer, new_offer)

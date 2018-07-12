@@ -56,16 +56,16 @@ class EventMixin:
     def event_activate(self):
         pass
 
-    def event_offer(self, *, market, offer):
+    def event_offer(self, *, market_id, offer):
         pass
 
-    def event_offer_changed(self, *, market, existing_offer, new_offer):
+    def event_offer_changed(self, *, market_id, existing_offer, new_offer):
         pass
 
-    def event_offer_deleted(self, *, market, offer):
+    def event_offer_deleted(self, *, market_id, offer):
         pass
 
-    def event_trade(self, *, market, trade):
+    def event_trade(self, *, market_id, trade):
         pass
 
 

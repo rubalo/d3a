@@ -46,7 +46,6 @@ class PVStrategy(BaseStrategy):
             * ureg.seconds
 
     def event_tick(self, *, area_id):
-        print("PV TICK:" + str(area_id))
         area = self.get_area_from_area_id(area_id)
         if self.area.historical_avg_rate == 0:
             average_market_rate =\

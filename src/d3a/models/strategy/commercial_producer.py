@@ -22,10 +22,13 @@ class CommercialStrategy(BaseStrategy):
         for market in self._markets_to_offer_on_activate():
             self.offer_energy(market)
 
-    def event_trade(self, *, market, trade):
+    def event_trade(self, *, market_id, trade):
         # If trade happened post a new offer
         if self.owner.name == trade.seller:
-            self.offer_energy(market)
+            # TODO: Refactor
+            for market in self.area.markets.values():
+                if market.market_id == market_id:
+                    self.offer_energy(market)
 
     def event_market_cycle(self):
         # Post new offers
