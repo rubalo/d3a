@@ -70,7 +70,7 @@ class PVPredefinedStrategy(ReadProfileMixin, PVStrategy):
     def _read_predefined_profile_for_pv(self) -> Dict[str, float]:
         """
         Reads profile data from the predefined power profiles. Reads config and constructor
-        parameters and selects the appropriate rpedefined profile.
+        parameters and selects the appropriate predefined profile.
         :return: key value pairs of time to energy in kWh
         """
         if self._power_profile_index is None:

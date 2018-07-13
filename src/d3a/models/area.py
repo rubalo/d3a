@@ -3,7 +3,7 @@ from collections import OrderedDict, defaultdict
 from logging import getLogger
 from random import random
 from typing import Dict, List, Optional, Union  # noqa
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, Event, Manager
 
 from cached_property import cached_property
 from pendulum.interval import Interval
@@ -81,6 +81,32 @@ def market_factory(serialized_market, area, broadcasts):
     return market
 
 
+class MultiprocessMarketWrapper:
+    def __init__(self):
+        # Dict of dicts. Each area has its own markets, one per timeslot
+        self.manager = Manager()
+        self.markets = self.manager.dict()
+
+    def append_market(self, area_name, timeslot, market):
+        if area_name not in self.markets.keys():
+            self.markets[area_name] = self.manager.dict()
+        self.markets[area_name][timeslot] = MarketSerializer(market)
+
+    def read_market_from_main_process(self, area, timeslot, broadcasts):
+        return market_factory(self.markets[area.name][timeslot], area, broadcasts)
+
+    def add_market_to_queue(self, queue, market):
+        queue.put(MarketSerializer(market), block=False)
+
+    def read_markets_from_subprocess(self, queue, area, broadcasts):
+        if not queue.empty():
+            markets = queue.get()
+            return {market.time_slot: market_factory(market,
+                                                     area,
+                                                     broadcasts)
+                    for market in markets}
+
+
 class Area:
     _area_id_counter = 1
 
@@ -120,7 +146,6 @@ class Area:
         if spawn_process:
             self.area_queue = Queue()
             self.market_queue = Queue()
-            from multiprocessing import Event
             self.event = Event()
             self.area_process = Process(target=self.process_event_loop,
                                         args=(self.area_queue, self.market_queue, self.event))
@@ -129,15 +154,20 @@ class Area:
             self.area_process = None
 
     def process_event_loop(self, event_queue, market_queue, event):
+        market_buffer = None
         while True:
             if not market_queue.empty():
                 markets = market_queue.get()
-                self.markets = {market.time_slot: market_factory(market,
-                                                                 self,
-                                                                 self._broadcast_notification)
-                                for market in markets}
+                market_buffer = {market.time_slot: market_factory(market,
+                                                                  self,
+                                                                  self._broadcast_notification)
+                                 for market in markets}
+                if self.parent:
+                    self.parent.markets = market_buffer
             if not event_queue.empty() and not event.is_set():
                 area_event = event_queue.get()
+                if self.parent:
+                    self.parent.markets = market_buffer
                 event_type = area_event[0]
                 keywordargs = area_event[1]
                 self.event_listener(event_type=event_type, **keywordargs)
@@ -333,10 +363,11 @@ class Area:
         for offset in (self.config.slot_length * i for i in range(self.config.market_count)):
             timeframe = now.add_timedelta(offset)
             if timeframe not in self.markets or self.markets[timeframe] is None:
+
                 # Create markets for missing slots
                 market = Market(timeframe, self,
                                 notification_listener=self._broadcast_notification)
-                if market not in self.inter_area_agents:
+                if market not in self.inter_area_agents.keys():
                     if self.parent and timeframe in self.parent.markets and not self.strategy:
                         # Only connect an InterAreaAgent if we have a parent, a corresponding
                         # timeframe market exists in the parent and we have no strategy
@@ -349,9 +380,10 @@ class Area:
                         # Attach agent to own IAA list
                         self.inter_area_agents[market].append(iaa)
                         # And also to parents to allow events to flow form both markets
-                        """ IPC HERE """
+
                         # parent needs to read data from the queue to synchronize markets
                         self.parent.inter_area_agents[self.parent.markets[timeframe]].append(iaa)
+
                         if self.parent:
                             # Add inter area appliance to report energy
                             self.appliance = InterAreaAppliance(self.parent, self)
@@ -363,10 +395,11 @@ class Area:
                 ))
 
         # TODO: Market serializer
-        if self.spawn_process:
-            self.market_queue.put([MarketSerializer(market)
-                                   for _, market in self.markets.items()],
-                                  block=False)
+        for child in self.children:
+            if child.spawn_process:
+                child.market_queue.put([MarketSerializer(market)
+                                       for _, market in self.markets.items()],
+                                       block=False)
 
         # Force market cycle event in case this is the first market slot
         if (changed or len(self.past_markets.keys()) == 0) and _trigger_event:
@@ -429,9 +462,12 @@ class Area:
             for child in children_to_wait:
                 child.event.wait()
                 child.event.clear()
+
         # Also broadcast to IAAs. Again in random order
         for market, agents in self.inter_area_agents.items():
+            print(market)
             if market.time_slot not in self.markets:
+                print(self.markets)
                 # exclude past IAAs
                 continue
             for agent in sorted(agents, key=lambda _: random()):

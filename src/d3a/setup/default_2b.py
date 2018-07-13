@@ -45,9 +45,9 @@ def get_setup(config):
                                                                    hrs_per_day=24,
                                                                    hrs_of_day=list(range(0, 24)),
                                                                    acceptable_energy_rate=35),
-                 appliance=SwitchableAppliance())
+                 appliance=SwitchableAppliance()),
             # Area('Commercial Energy Producer',
-            #      strategy=CommercialStrategy(energy_range_wh=(40, 120), energy_price=30),
+            #      strategy=CommercialStrategy(),
             #      appliance=SimpleAppliance()
             #      ),
 
