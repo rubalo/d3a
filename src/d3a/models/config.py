@@ -1,13 +1,15 @@
 import ast
-from pendulum.interval import Interval
+from pendulum import duration
 
 from d3a.exceptions import D3AException
 from d3a.util import format_interval
 from d3a.models.strategy.const import ConstSettings
+from d3a.models.strategy.mixins import ReadProfileMixin
+from d3a.models.strategy.mixins import InputProfileTypes
 
 
 class SimulationConfig:
-    def __init__(self, duration: Interval, slot_length: Interval, tick_length: Interval,
+    def __init__(self, duration: duration, slot_length: duration, tick_length: duration,
                  market_count: int, cloud_coverage: int, market_maker_rate, iaa_fee: int):
         self.duration = duration
         self.slot_length = slot_length
@@ -30,17 +32,9 @@ class SimulationConfig:
             self.cloud_coverage = cloud_coverage
         else:
             raise D3AException("Invalid cloud coverage value ({}).".format(cloud_coverage))
-        market_maker_rate_parsed = ast.literal_eval(str(market_maker_rate))
-        if type(market_maker_rate_parsed) == int:
-            self.market_maker_rate = {k: market_maker_rate_parsed for k in range(24)}
-        elif type(market_maker_rate_parsed) == dict:
-            market_maker_rate_profile = market_maker_rate_parsed
-            if sorted(market_maker_rate_profile.keys()) != list(range(24)):
-                raise TypeError('Market maker rate profile failed to be parsed.'
-                                ' Incomplete hour mapping.')
-            self.market_maker_rate = market_maker_rate_profile
-        else:
-            raise D3AException("Invalid market_maker_rate value ({}).".format(market_maker_rate))
+
+        self.market_maker_rate = {}
+        self.read_market_maker_rate(market_maker_rate)
         if iaa_fee is None:
             self.iaa_fee = ConstSettings.INTER_AREA_AGENT_FEE_PERCENTAGE
         else:
@@ -63,7 +57,15 @@ class SimulationConfig:
         fields = {'duration', 'slot_length', 'tick_length', 'market_count', 'ticks_per_slot',
                   'total_ticks', 'cloud_coverage'}
         return {
-            k: format_interval(v) if isinstance(v, Interval) else v
+            k: format_interval(v) if isinstance(v, duration) else v
             for k, v in self.__dict__.items()
             if k in fields
         }
+
+    def read_market_maker_rate(self, market_maker_rate):
+        """
+        Reads market_maker_rate from arbitrary input types
+        """
+        market_maker_rate_parsed = ast.literal_eval(str(market_maker_rate))
+        self.market_maker_rate = ReadProfileMixin.read_arbitrary_profile(InputProfileTypes.RATE,
+                                                                         market_maker_rate_parsed)

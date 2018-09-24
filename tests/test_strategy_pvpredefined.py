@@ -1,7 +1,7 @@
 import pytest
 import pendulum
 import uuid
-from pendulum import Pendulum, Interval
+from pendulum import DateTime, duration
 
 from d3a.models.area import DEFAULT_CONFIG
 from d3a.models.market import Offer, Trade
@@ -26,15 +26,15 @@ class FakeArea():
         return DEFAULT_CONFIG
 
     @property
-    def now(self) -> Pendulum:
+    def now(self) -> DateTime:
         """
-        Return the 'current time' as a `Pendulum` object.
+        Return the 'current time' as a `DateTime` object.
         Can be overridden in subclasses to change the meaning of 'now'.
 
         In this default implementation 'current time' is defined by the number of ticks that
         have passed.
         """
-        return Pendulum.now().start_of('day').add_timedelta(
+        return DateTime.now().start_of('day') + (
             self.config.tick_length * self.current_tick
         )
 
@@ -58,6 +58,14 @@ class FakeMarket:
         self.created_offers.append(offer)
         self.offers[offer.id] = offer
         return offer
+
+    @property
+    def time_slot(self):
+        return DateTime.now().start_of('day')
+
+    @property
+    def time_slot_str(self):
+        return self.time_slot.strftime("%H:%M")
 
     def delete_offer(self, offer_id):
         return
@@ -123,7 +131,9 @@ def testing_decrease_offer_price(area_test3, market_test3, pv_test3):
     pv_test3.event_activate()
     pv_test3.event_market_cycle()
     old_offer = list(pv_test3.offers.posted.keys())[0]
-    pv_test3.decrease_offer_price(area_test3.test_market)
+    pv_test3._decrease_offer_price(area_test3.test_market,
+                                   pv_test3._calculate_price_decrease_rate(
+                                           area_test3.test_market))
     new_offer = list(pv_test3.offers.posted.keys())[0]
     assert new_offer.price < old_offer.price
 
@@ -232,7 +242,7 @@ def testing_produced_energy_forecast_real_data(pv_test6):
 # Make sure that it doesnt offer it again after selling.
 def test_does_not_offer_sold_energy_again(pv_test6, market_test3):
     pv_test6.event_activate()
-    pv_test6.event_tick(area=area_test3)
+    pv_test6.event_market_cycle()
     assert market_test3.created_offers[0].energy == pv_test6.energy_production_forecast_kWh[TIME]
     fake_trade = FakeTrade(market_test3.created_offers[0])
     pv_test6.event_trade(market=market_test3, trade=fake_trade)
@@ -271,7 +281,7 @@ def pv_test_cloudy(area_test7):
     p = PVPredefinedStrategy(cloud_coverage=1)
     p.area = area_test7
     p.owner = area_test7
-    p.area.config.slot_length = Interval(minutes=20)
+    p.area.config.slot_length = duration(minutes=20)
     return p
 
 

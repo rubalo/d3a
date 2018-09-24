@@ -2,6 +2,8 @@
 To validate the break even hourly profile the backend plot Energy Trade Profile Of House 1
 is required. The energy rates for the storages are displayed in this plot, and these rates
 should adhere to the break even hourly profiles that are defined in this module.
+Tip: It's interesting to see the change in results from changing the initial_pv_rate_option
+between 1(historical average prices) and 2(market maker price).
 """
 from d3a.models.appliance.switchable import SwitchableAppliance
 from d3a.models.area import Area
@@ -66,7 +68,7 @@ def get_setup(config):
                                                                        hrs_per_day=6,
                                                                        hrs_of_day=list(
                                                                            range(12, 18)),
-                                                                       acceptable_energy_rate=35),
+                                                                       max_energy_rate=35),
                          appliance=SwitchableAppliance()),
                     Area('H1 Storage1', strategy=StorageStrategy(risk=10, initial_capacity=0.6,
                                                                  break_even=break_even_profile,
@@ -85,9 +87,9 @@ def get_setup(config):
                                                                        hrs_per_day=4,
                                                                        hrs_of_day=list(
                                                                            range(12, 16)),
-                                                                       acceptable_energy_rate=35),
+                                                                       max_energy_rate=35),
                          appliance=SwitchableAppliance()),
-                    Area('H2 PV', strategy=PVStrategy(4, 80),
+                    Area('H2 PV', strategy=PVStrategy(4, 10, initial_rate_option=2),
                          appliance=PVAppliance()),
 
                 ]
@@ -95,7 +97,7 @@ def get_setup(config):
             Area('Cell Tower', strategy=CellTowerLoadHoursStrategy(avg_power_W=100,
                                                                    hrs_per_day=24,
                                                                    hrs_of_day=list(range(0, 24)),
-                                                                   acceptable_energy_rate=35),
+                                                                   max_energy_rate=35),
                  appliance=SwitchableAppliance()),
         ],
         config=config

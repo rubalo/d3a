@@ -3,12 +3,16 @@ import importlib
 import logging
 import glob
 from math import isclose
-from pendulum.interval import Interval
+from pendulum import duration
 from behave import given, when, then
 
 from d3a.models.config import SimulationConfig
+from d3a.models.strategy.mixins import ReadProfileMixin
 from d3a.simulation import Simulation
 from d3a.models.strategy.predefined_pv import d3a_path
+from d3a import TIME_FORMAT, PENDULUM_TIME_FORMAT
+from d3a.models.strategy.const import ConstSettings
+from d3a.export_unmatched_loads import export_unmatched_loads
 
 
 @given('we have a scenario named {scenario}')
@@ -39,76 +43,38 @@ def hour_profile(context, device):
     }
 
 
+@given('a {device} profile string as input to predefined load')
+def json_string_profile(context, device):
+    context._device_profile_dict = {i: 100 for i in range(10)}
+    context._device_profile_dict.update({i: 50 for i in range(10, 20)})
+    context._device_profile_dict.update({i: 25 for i in range(20, 24)})
+    profile = "{"
+    for i in range(24):
+        for j in ["00", "15", "30", "45"]:
+            if i < 10:
+                profile += f"\"{i:02}:{j}\": 100, "
+            elif 10 <= i < 20:
+                profile += f"\"{i:02}:{j}\": 50, "
+            else:
+                profile += f"\"{i:02}:{j}\": 25, "
+    profile += "}"
+    context._device_profile = profile
+
+
 @given('we have a profile of market_maker_rate for {scenario}')
 def hour_profile_of_market_maker_rate(context, scenario):
-    context._market_maker_rate = {
-        0: 30, 1: 31, 2: 32, 3: 33, 4: 34, 5: 35, 6: 36, 7: 37, 8: 38,
-        9: 37, 10: 38, 11: 39, 12: 36, 13: 35, 14: 34, 15: 33, 16: 32,
-        17: 31, 18: 30, 19: 31, 20: 31, 21: 31, 22: 29, 23: 31}
-
-
-@given('a load profile csv as input to predefined load')
-def load_csv_profile(context):
-    context._device_profile = os.path.join(d3a_path, 'resources', 'LOAD_DATA_1.csv')
+    import importlib
+    from d3a.models.strategy.mixins import ReadProfileMixin
+    from d3a.models.strategy.mixins import InputProfileTypes
+    setup_file_module = importlib.import_module("d3a.setup.{}".format(scenario))
+    context._market_maker_rate = ReadProfileMixin.\
+        read_arbitrary_profile(InputProfileTypes.RATE, setup_file_module.market_maker_rate)
+    assert context._market_maker_rate is not None
 
 
 @given('a PV profile csv as input to predefined PV')
 def pv_csv_profile(context):
     context._device_profile = os.path.join(d3a_path, 'resources', 'Solar_Curve_W_cloudy.csv')
-
-
-@given('the scenario includes a predefined load that will not be unmatched')
-def load_profile_scenario(context):
-    predefined_load_scenario = {
-      "name": "Grid",
-      "children": [
-        {
-          "name": "Commercial Energy Producer",
-          "type": "CommercialProducer",
-          "energy_price": 15.5,
-          "energy_range_wh": [40, 120]
-        },
-        {
-          "name": "House 1",
-          "children": [
-            {
-              "name": "H1 Load",
-              "type": "LoadProfile",
-              "daily_load_profile": context._device_profile
-            },
-            {
-              "name": "H1 PV",
-              "type": "PV",
-              "panel_count": 3,
-              "risk": 80
-            }
-          ]
-        },
-        {
-          "name": "House 2",
-          "children": [
-            {
-              "name": "H2 Storage",
-              "type": "Storage",
-              "capacity": 5,
-              "initial_charge": 40
-            },
-            {
-              "name": "H2 Fridge 1",
-              "type": "Fridge"
-            },
-          ]
-        }
-      ]
-    }
-    context._settings = SimulationConfig(tick_length=Interval(seconds=15),
-                                         slot_length=Interval(minutes=15),
-                                         duration=Interval(hours=24),
-                                         market_count=4,
-                                         cloud_coverage=0,
-                                         market_maker_rate=30,
-                                         iaa_fee=5)
-    context._settings.area = predefined_load_scenario
 
 
 @given('the scenario includes a predefined PV')
@@ -155,14 +121,68 @@ def pv_profile_scenario(context):
             }
         ]
     }
-    context._settings = SimulationConfig(tick_length=Interval(seconds=15),
-                                         slot_length=Interval(minutes=15),
-                                         duration=Interval(hours=24),
+    context._settings = SimulationConfig(tick_length=duration(seconds=15),
+                                         slot_length=duration(minutes=15),
+                                         duration=duration(hours=24),
                                          market_count=4,
                                          cloud_coverage=0,
                                          market_maker_rate=30,
                                          iaa_fee=5)
     context._settings.area = predefined_pv_scenario
+
+
+@given('the scenario includes a predefined load that will not be unmatched')
+def load_profile_scenario(context):
+    predefined_load_scenario = {
+      "name": "Grid",
+      "children": [
+        {
+          "name": "Commercial Energy Producer",
+          "type": "CommercialProducer",
+          "energy_price": 15.5,
+          "energy_range_wh": [40, 120]
+        },
+        {
+          "name": "House 1",
+          "children": [
+            {
+              "name": "H1 Load",
+              "type": "LoadProfile",
+              "daily_load_profile": context._device_profile
+            },
+            {
+              "name": "H1 PV",
+              "type": "PV",
+              "panel_count": 3,
+              "risk": 80
+            }
+          ]
+        },
+        {
+          "name": "House 2",
+          "children": [
+            {
+              "name": "H2 Storage",
+              "type": "Storage",
+              "capacity": 5,
+              "initial_charge": 40
+            },
+            {
+              "name": "H2 Fridge 1",
+              "type": "Fridge"
+            },
+          ]
+        }
+      ]
+    }
+    context._settings = SimulationConfig(tick_length=duration(seconds=15),
+                                         slot_length=duration(minutes=15),
+                                         duration=duration(hours=24),
+                                         market_count=4,
+                                         cloud_coverage=0,
+                                         market_maker_rate=30,
+                                         iaa_fee=5)
+    context._settings.area = predefined_load_scenario
 
 
 @when('the simulation is running')
@@ -174,14 +194,14 @@ def running_the_simulation(context):
     slowdown = 0
     seed = 0
     paused = False
-    pause_after = Interval()
+    pause_after = duration()
     repl = False
     export = False
     export_path = None
     reset_on_finish = False
-    reset_on_finish_wait = Interval()
+    reset_on_finish_wait = duration()
     exit_on_finish = True
-    exit_on_finish_wait = Interval()
+    exit_on_finish_wait = duration()
 
     api_url = "http://localhost:5000/api"
     context.simulation = Simulation(
@@ -215,19 +235,48 @@ def run_sim_console(context, scenario):
       ' [{cloud_coverage}, {iaa_fee}] and {scenario}')
 def run_sim_with_config_setting(context, cloud_coverage,
                                 iaa_fee, scenario):
-    context.export_path = os.path.join(context.simdir, scenario)
-    simulation_config = SimulationConfig(Interval(hours=int(4)),
-                                         Interval(minutes=int(60)),
-                                         Interval(seconds=int(60)),
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.CRITICAL)
+
+    simulation_config = SimulationConfig(duration(hours=int(24)),
+                                         duration(minutes=int(60)),
+                                         duration(seconds=int(60)),
                                          market_count=5,
                                          cloud_coverage=int(cloud_coverage),
                                          market_maker_rate=context._market_maker_rate,
                                          iaa_fee=int(iaa_fee))
 
+    slowdown = 0
+    seed = 0
+    paused = False
+    pause_after = duration()
+    repl = False
+    export = False
+    export_path = None
+    reset_on_finish = False
+    reset_on_finish_wait = duration()
+    exit_on_finish = True
+    exit_on_finish_wait = duration()
+
+    api_url = "http://localhost:5000/api"
     context.simulation = Simulation(
-        scenario, simulation_config, 0, 0, False, Interval(), False, False, None, False,
-        Interval(), True, Interval(), None, "1234"
+        scenario,
+        simulation_config,
+        slowdown,
+        seed,
+        paused,
+        pause_after,
+        repl,
+        export,
+        export_path,
+        reset_on_finish,
+        reset_on_finish_wait,
+        exit_on_finish,
+        exit_on_finish_wait,
+        api_url
     )
+    context.simulation.run()
 
 
 @when('we run simulation on console with default settings file')
@@ -251,29 +300,33 @@ def test_export_data_csv(context, scenario):
 
 @then('we test that config parameters are correctly parsed for {scenario}'
       ' [{cloud_coverage}, {iaa_fee}]')
-def test_simulation_config_parameters(context, scenario,
-                                      cloud_coverage, iaa_fee):
+def test_simulation_config_parameters(context, scenario, cloud_coverage, iaa_fee):
+    from d3a.models.strategy.mixins import default_profile_dict
     assert context.simulation.simulation_config.cloud_coverage == int(cloud_coverage)
-    assert len(context.simulation.simulation_config.market_maker_rate) == 24
-    for i in range(len(context.simulation.simulation_config.market_maker_rate)):
-        assert context.simulation.simulation_config.market_maker_rate[i] ==\
-               context._market_maker_rate[i]
+    assert len(context.simulation.simulation_config.market_maker_rate) == 24 * 60
+    assert len(default_profile_dict().keys()) == len(context.simulation.simulation_config.
+                                                     market_maker_rate.keys())
+    assert context.simulation.simulation_config.market_maker_rate["01:59"] == 0
+    assert context.simulation.simulation_config.market_maker_rate["12:00"] == \
+        context._market_maker_rate["11:00"]
+    assert context.simulation.simulation_config.market_maker_rate["23:00"] == \
+        context._market_maker_rate["22:00"]
     assert context.simulation.simulation_config.iaa_fee == int(iaa_fee)
 
 
 @when('a simulation is created for scenario {scenario}')
 def create_sim_object(context, scenario):
-    simulation_config = SimulationConfig(Interval(hours=int(24)),
-                                         Interval(minutes=int(15)),
-                                         Interval(seconds=int(30)),
+    simulation_config = SimulationConfig(duration(hours=int(24)),
+                                         duration(minutes=int(15)),
+                                         duration(seconds=int(30)),
                                          market_count=5,
                                          cloud_coverage=0,
                                          market_maker_rate=30,
                                          iaa_fee=5)
 
     context.simulation = Simulation(
-        scenario, simulation_config, 0, 0, False, Interval(), False, False, None, False,
-        Interval(), True, Interval(), None, "1234"
+        scenario, simulation_config, 0, 0, False, duration(), False, False, None, False,
+        duration(), True, duration(), None, "1234"
     )
 
 
@@ -318,7 +371,7 @@ def final_results(context):
 
 @then('intermediate results are transmitted on every slot')
 def interm_res_report(context):
-    assert context.interm_results_count == 97
+    assert context.interm_results_count == 96
 
 
 @then('final results are transmitted once')
@@ -331,31 +384,39 @@ def method_called(context, method):
     assert context.ctrl_callback_call_count == 1
 
 
-@when('we run the d3a simulation with {scenario} [{duration}, {slot_length}, {tick_length}]')
-def run_sim(context, scenario, duration, slot_length, tick_length):
+@when('we run the d3a simulation with {scenario} [{total_duration}, '
+      '{slot_length}, {tick_length}]')
+def run_sim_without_iaa_fee(context, scenario, total_duration, slot_length, tick_length):
+    run_sim(context, scenario, total_duration, slot_length, tick_length,
+            ConstSettings.INTER_AREA_AGENT_FEE_PERCENTAGE)
+
+
+@when('we run the simulation with setup file {scenario} '
+      'and parameters [{total_duration}, {slot_length}, {tick_length}, {iaa_fee}]')
+def run_sim(context, scenario, total_duration, slot_length, tick_length, iaa_fee):
 
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.CRITICAL)
 
-    simulation_config = SimulationConfig(Interval(hours=int(duration)),
-                                         Interval(minutes=int(slot_length)),
-                                         Interval(seconds=int(tick_length)),
+    simulation_config = SimulationConfig(duration(hours=int(total_duration)),
+                                         duration(minutes=int(slot_length)),
+                                         duration(seconds=int(tick_length)),
                                          market_count=5,
                                          cloud_coverage=0,
                                          market_maker_rate=30,
-                                         iaa_fee=5)
+                                         iaa_fee=int(iaa_fee))
 
     slowdown = 0
     seed = 0
     paused = False
-    pause_after = Interval()
+    pause_after = duration()
     repl = False
     export = False
     export_path = None
     reset_on_finish = False
-    reset_on_finish_wait = Interval()
+    reset_on_finish_wait = duration()
     exit_on_finish = True
-    exit_on_finish_wait = Interval()
+    exit_on_finish_wait = duration()
 
     api_url = "http://localhost:5000/api"
     context.simulation = Simulation(
@@ -381,21 +442,31 @@ def run_sim(context, scenario, duration, slot_length, tick_length):
       '{scenario} [{duration}, {slot_length}, {tick_length}]')
 def test_output(context, scenario, duration, slot_length, tick_length):
 
-    # Check if simulation ran through
+    if scenario in ["default_2", "default_2a", "default_3"]:
+        unmatched = export_unmatched_loads(context.simulation.area)
+        assert unmatched["unmatched_load_count"] == 0
     # (check if number of last slot is the maximal number of slots):
-    no_of_slots = (int(duration) * 60 / int(slot_length)) + 1
+    no_of_slots = (int(duration) * 60 / int(slot_length))
     assert no_of_slots == context.simulation.area.current_slot
-    # TODO: Implement more sophisticated tests for success of simulation
+    if scenario == "default":
+        street1 = list(filter(lambda x: x.name == "Street 1", context.simulation.area.children))[0]
+        house1 = list(filter(lambda x: x.name == "S1 House 1", street1.children))[0]
+        permanent_load = list(filter(lambda x: x.name == "S1 H1 Load", house1.children))[0]
+        energy_profile = [ki for ki in permanent_load.strategy.state.desired_energy.values()]
+        assert all([permanent_load.strategy.energy == ei for ei in energy_profile])
 
 
 @then('the predefined load follows the load profile')
 def check_load_profile(context):
+    if isinstance(context._device_profile, str):
+        context._device_profile = context._device_profile_dict
+
     house1 = list(filter(lambda x: x.name == "House 1", context.simulation.area.children))[0]
     load = list(filter(lambda x: x.name == "H1 Load", house1.children))[0]
     for timepoint, energy in load.strategy.state.desired_energy.items():
         if timepoint.hour in context._device_profile:
             assert energy == context._device_profile[timepoint.hour] / \
-                   (Interval(hours=1) / load.config.slot_length)
+                   (duration(hours=1) / load.config.slot_length)
         else:
             assert energy == 0
 
@@ -404,92 +475,77 @@ def check_load_profile(context):
 def check_pv_profile(context):
     house1 = list(filter(lambda x: x.name == "House 1", context.simulation.area.children))[0]
     pv = list(filter(lambda x: x.name == "H1 PV", house1.children))[0]
+    if pv.strategy._power_profile_index == 0:
+        path = os.path.join(d3a_path, "resources/Solar_Curve_W_sunny.csv")
+    if pv.strategy._power_profile_index == 1:
+        path = os.path.join(d3a_path, "resources/Solar_Curve_W_partial.csv")
+    if pv.strategy._power_profile_index == 2:
+        path = os.path.join(d3a_path, "resources/Solar_Curve_W_cloudy.csv")
+    profile_data = ReadProfileMixin._readCSV(path)
     for timepoint, energy in pv.strategy.energy_production_forecast_kWh.items():
-        if timepoint.hour in context._device_profile:
-            assert energy == context._device_profile[timepoint.hour] / \
-                   (Interval(hours=1) / pv.config.slot_length) / 1000.0
+        time = str(timepoint.format(PENDULUM_TIME_FORMAT))
+        if time in profile_data.keys():
+            assert energy == profile_data[time] / \
+                   (duration(hours=1) / pv.config.slot_length) / 1000.0
         else:
             assert energy == 0
 
 
-@then('the predefined load follows the load profile from the csv')
-def check_load_profile_csv(context):
+@then('the UserProfile PV follows the PV profile as dict')
+def check_user_pv_dict_profile(context):
     house1 = list(filter(lambda x: x.name == "House 1", context.simulation.area.children))[0]
-    load = list(filter(lambda x: x.name == "H1 Load", house1.children))[0]
-    input_profile = load.strategy._readCSV(context._device_profile)
-    desired_energy = {f'{k.hour:02}:{k.minute:02}': v
-                      for k, v in load.strategy.state.desired_energy.items()
-                      }
-
-    for timepoint, energy in desired_energy.items():
-        if timepoint in input_profile:
-            assert energy == input_profile[timepoint] / \
-                   (Interval(hours=1) / load.config.slot_length)
+    pv = list(filter(lambda x: x.name == "H1 PV", house1.children))[0]
+    from d3a.setup.strategy_tests.user_profile_pv_dict import user_profile
+    profile_data = user_profile
+    for timepoint, energy in pv.strategy.energy_production_forecast_kWh.items():
+        if timepoint.hour in profile_data.keys():
+            assert energy == profile_data[timepoint.hour] / \
+                   (duration(hours=1) / pv.config.slot_length) / 1000.0
         else:
-            assert False
+            if int(timepoint.hour) > int(list(user_profile.keys())[-1]):
+                assert energy == user_profile[list(user_profile.keys())[-1]] / \
+                   (duration(hours=1) / pv.config.slot_length) / 1000.0
+            else:
+                assert energy == 0
+
+
+@then('the UserProfile PV follows the PV profile of csv')
+def check_pv_csv_profile(context):
+    house1 = list(filter(lambda x: x.name == "House 1", context.simulation.area.children))[0]
+    pv = list(filter(lambda x: x.name == "H1 PV", house1.children))[0]
+    from d3a.setup.strategy_tests.user_profile_pv_csv import user_profile_path
+    profile_data = ReadProfileMixin._readCSV(user_profile_path)
+    for timepoint, energy in pv.strategy.energy_production_forecast_kWh.items():
+        time = str(timepoint.format(PENDULUM_TIME_FORMAT))
+        if time in profile_data.keys():
+            assert energy == profile_data[time] / \
+                   (duration(hours=1) / pv.config.slot_length) / 1000.0
+        else:
+            assert energy == 0
 
 
 @then('the predefined PV follows the PV profile from the csv')
 def check_pv_profile_csv(context):
+    from d3a.models.strategy.mixins import ReadProfileMixin
     house1 = list(filter(lambda x: x.name == "House 1", context.simulation.area.children))[0]
     pv = list(filter(lambda x: x.name == "H1 PV", house1.children))[0]
-    input_profile = pv.strategy._readCSV(context._device_profile)
+    input_profile = ReadProfileMixin._readCSV(context._device_profile)
     produced_energy = {f'{k.hour:02}:{k.minute:02}': v
                        for k, v in pv.strategy.energy_production_forecast_kWh.items()
                        }
     for timepoint, energy in produced_energy.items():
         if timepoint in input_profile:
             assert energy == input_profile[timepoint] / \
-                   (Interval(hours=1) / pv.config.slot_length) / 1000.0
+                   (duration(hours=1) / pv.config.slot_length) / 1000.0
         else:
             assert False
-
-
-@then('the storage devices buy and sell energy respecting the break even prices')
-def check_storage_prices(context):
-    house1 = list(filter(lambda x: x.name == "House 1", context.simulation.area.children))[0]
-    trades_sold = []
-    trades_bought = []
-    for slot, market in house1.past_markets.items():
-        for trade in market.trades:
-            if trade.seller in ["H1 Storage1", "H1 Storage2"]:
-                trades_sold.append(trade)
-            elif trade.buyer in ["H1 Storage1", "H1 Storage2"]:
-                trades_bought.append(trade)
-    assert all([trade.offer.price / trade.offer.energy >= 27.01 for trade in trades_sold])
-    assert all([trade.offer.price / trade.offer.energy <= 26.99 for trade in trades_bought])
-    assert len(trades_sold) > 0
-    assert len(trades_bought) > 0
-
-
-@then('the storage devices buy and sell energy respecting the hourly break even prices')
-def step_impl(context):
-    from d3a.setup.strategy_tests.storage_strategy_break_even_hourly import \
-        break_even_profile, break_even_profile_2
-    house1 = list(filter(lambda x: x.name == "House 1", context.simulation.area.children))[0]
-    for name, profile in [("H1 Storage1", break_even_profile),
-                          ("H1 Storage2", break_even_profile_2)]:
-        trades_sold = []
-        trades_bought = []
-        for slot, market in house1.past_markets.items():
-            for trade in market.trades:
-                if trade.seller == name:
-                    trades_sold.append(trade)
-                elif trade.buyer == name:
-                    trades_bought.append(trade)
-        assert all([trade.offer.price / trade.offer.energy >= profile[trade.time.hour][1]
-                    for trade in trades_sold])
-        assert all([trade.offer.price / trade.offer.energy <= profile[trade.time.hour][0]
-                    for trade in trades_bought])
-        assert len(trades_sold) > 0
-        assert len(trades_bought) > 0
 
 
 @then('the {plant_name} always sells energy at the defined energy rate')
 def test_finite_plant_energy_rate(context, plant_name):
     grid = context.simulation.area
     finite = list(filter(lambda x: x.name == plant_name,
-                         context.simulation.area.children))[0]
+                         grid.children))[0]
     trades_sold = []
     for slot, market in grid.past_markets.items():
         for trade in market.trades:
@@ -497,6 +553,24 @@ def test_finite_plant_energy_rate(context, plant_name):
             if trade.seller == finite.name:
                 trades_sold.append(trade)
         assert all([isclose(trade.offer.price / trade.offer.energy, finite.strategy.energy_rate)
+                    for trade in trades_sold])
+        assert len(trades_sold) > 0
+
+
+@then('the {plant_name} always sells energy at the defined market maker rate')
+def test_infinite_plant_energy_rate(context, plant_name):
+    grid = context.simulation.area
+    finite = list(filter(lambda x: x.name == plant_name,
+                         grid.children))[0]
+    trades_sold = []
+    for slot, market in grid.past_markets.items():
+        for trade in market.trades:
+            assert trade.buyer is not finite.name
+            if trade.seller == finite.name:
+                trades_sold.append(trade)
+        assert all([isclose(trade.offer.price / trade.offer.energy,
+                    context.simulation.simulation_config.
+                            market_maker_rate[trade.time.strftime(TIME_FORMAT)])
                     for trade in trades_sold])
         assert len(trades_sold) > 0
 
@@ -514,5 +588,16 @@ def test_finite_plant_max_power(context, plant_name):
             if trade.seller == finite.name:
                 trades_sold.append(trade)
         assert sum([trade.offer.energy for trade in trades_sold]) <= \
-            finite.strategy.max_available_power[market.time_slot.hour] / \
-            (Interval(hours=1) / finite.config.slot_length)
+            finite.strategy.max_available_power_kW[market.time_slot.hour].m / \
+            (duration(hours=1) / finite.config.slot_length)
+
+
+@then('the PV sells energy at the market maker rate for every market slot')
+def test_pv_initial_pv_rate_option(context):
+    grid = context.simulation.area
+    house = list(filter(lambda x: x.name == "House", grid.children))[0]
+
+    for slot, market in house.past_markets.items():
+        for trade in market.trades:
+            assert isclose(trade.offer.price / trade.offer.energy,
+                           grid.config.market_maker_rate[market.time_slot_str])

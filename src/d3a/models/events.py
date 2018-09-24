@@ -17,12 +17,19 @@ class MarketEvent(Enum):
     OFFER_CHANGED = 4
     OFFER_DELETED = 2
     TRADE = 3
+    BID_TRADED = 5
+    BID_DELETED = 6
+    BALANCING_OFFER = 7
+    BALANCING_OFFER_CHANGED = 8
+    BALANCING_OFFER_DELETED = 9
+    BALANCING_TRADE = 10
 
 
 class AreaEvent(Enum):
     TICK = 1
     MARKET_CYCLE = 2
-    ACTIVATE = 3
+    BALANCING_MARKET_CYCLE = 3
+    ACTIVATE = 4
 
 
 class EventMixin:
@@ -35,11 +42,18 @@ class EventMixin:
             self._event_map = {
                 AreaEvent.TICK: self.event_tick,
                 AreaEvent.MARKET_CYCLE: self.event_market_cycle,
+                AreaEvent.BALANCING_MARKET_CYCLE: self.event_balancing_market_cycle,
                 AreaEvent.ACTIVATE: self.event_activate,
                 MarketEvent.OFFER: self.event_offer,
                 MarketEvent.OFFER_CHANGED: self.event_offer_changed,
                 MarketEvent.OFFER_DELETED: self.event_offer_deleted,
-                MarketEvent.TRADE: self.event_trade
+                MarketEvent.TRADE: self.event_trade,
+                MarketEvent.BID_TRADED: self.event_bid_traded,
+                MarketEvent.BID_DELETED: self.event_bid_deleted,
+                MarketEvent.BALANCING_OFFER: self.event_balancing_offer,
+                MarketEvent.BALANCING_OFFER_CHANGED: self.event_balancing_offer_changed,
+                MarketEvent.BALANCING_OFFER_DELETED: self.event_balancing_offer_deleted,
+                MarketEvent.BALANCING_TRADE: self.event_balancing_trade
             }
             return self._event_map
 
@@ -51,6 +65,9 @@ class EventMixin:
         pass
 
     def event_market_cycle(self):
+        pass
+
+    def event_balancing_market_cycle(self):
         pass
 
     def event_activate(self):
@@ -66,6 +83,24 @@ class EventMixin:
         pass
 
     def event_trade(self, *, market_id, trade):
+        pass
+
+    def event_bid_traded(self, *, market, bid_trade):
+        pass
+
+    def event_bid_deleted(self, *, market, bid):
+        pass
+
+    def event_balancing_offer(self, *, market, offer):
+        pass
+
+    def event_balancing_offer_changed(self, *, market, existing_offer, new_offer):
+        pass
+
+    def event_balancing_offer_deleted(self, *, market, offer):
+        pass
+
+    def event_balancing_trade(self, *, market, trade):
         pass
 
 

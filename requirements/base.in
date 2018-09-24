@@ -9,14 +9,12 @@ ethereum
 flask
 flask-api
 flask-cors
-numpy
-pandas
 pendulum
 pint
 pip-tools
 plotly
 python-rex
-rlp==0.4.7
+rlp
 tablib
 terminaltables
 rq

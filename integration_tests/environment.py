@@ -19,6 +19,9 @@ before_tag(context, tag), after_tag(context, tag)
 # from behave import use_step_matcher
 # step_matcher("cfparse")
 
+from d3a.models.strategy.const import ConstSettings
+from d3a.util import update_advanced_settings
+
 
 def before_scenario(context, scenario):
     context.simdir = "./d3a-simulation/integration_tests/"
@@ -28,8 +31,13 @@ def before_scenario(context, scenario):
 
 def after_scenario(context, scenario):
     shutil.rmtree(context.simdir)
+
+    update_advanced_settings(context.default_const_settings)
     context.resource_manager.close()
 
 
 def before_all(context):
+    context.default_const_settings = {key: value
+                                      for key, value in dict(ConstSettings.__dict__).items()
+                                      if not key.startswith("__")}
     context.config.setup_logging()

@@ -7,20 +7,21 @@ from pathlib import Path
 from threading import Event, Thread, Lock
 import dill
 
-from pendulum import Pendulum
-from pendulum.interval import Interval
+from pendulum import DateTime
+from pendulum import duration
 from pendulum.period import Period
 from pickle import HIGHEST_PROTOCOL
 from ptpython.repl import embed
 
 from d3a.exceptions import SimulationException, D3AException
-from d3a.export import export
+from d3a.export import ExportAndPlot
 from d3a.models.config import SimulationConfig
 # noinspection PyUnresolvedReferences
 from d3a import setup as d3a_setup  # noqa
 from d3a.util import NonBlockingConsole, format_interval
 from d3a.endpoint_buffer import SimulationEndpointBuffer
 from d3a.redis_communication import RedisSimulationCommunication
+from d3a.models.strategy.const import ConstSettings
 
 
 log = getLogger(__name__)
@@ -35,12 +36,12 @@ class _SimulationInterruped(Exception):
 
 class Simulation:
     def __init__(self, setup_module_name: str, simulation_config: SimulationConfig = None,
-                 slowdown: int = 0, seed=None, paused: bool = False, pause_after: Interval = None,
+                 slowdown: int = 0, seed=None, paused: bool = False, pause_after: duration = None,
                  use_repl: bool = False, export: bool = False, export_path: str = None,
                  reset_on_finish: bool = False,
-                 reset_on_finish_wait: Interval = Interval(minutes=1),
+                 reset_on_finish_wait: duration = duration(minutes=1),
                  exit_on_finish: bool = False,
-                 exit_on_finish_wait: Interval = Interval(seconds=1),
+                 exit_on_finish_wait: duration = duration(seconds=1),
                  api_url=None, redis_job_id=None):
 
         self.initial_params = dict(
@@ -76,6 +77,23 @@ class Simulation:
         self._init(**self.initial_params)
         self._init_events()
 
+    def _set_traversal_length(self):
+        if ConstSettings.MAX_OFFER_TRAVERSAL_LENGTH is None:
+            no_of_levels = self._get_setup_levels(self.area) + 1
+            num_ticks_to_propagate = no_of_levels * 2
+            ConstSettings.MAX_OFFER_TRAVERSAL_LENGTH = int(num_ticks_to_propagate)
+            time_to_propagate_minutes = num_ticks_to_propagate * \
+                self.simulation_config.tick_length.seconds / 60.
+            log.error("Setup has {} levels, offers/bids need at least {} minutes "
+                      "({} ticks) to propagate.".format(no_of_levels, time_to_propagate_minutes,
+                                                        ConstSettings.MAX_OFFER_TRAVERSAL_LENGTH,))
+
+    def _get_setup_levels(self, area, level_count=0):
+        level_count += 1
+        count_list = [self._get_setup_levels(child, level_count)
+                      for child in area.children if child.children]
+        return max(count_list) if len(count_list) > 0 else level_count
+
     def _load_setup_module(self):
         try:
             self.setup_module = import_module(".{}".format(self.setup_module_name), 'd3a.setup')
@@ -97,14 +115,21 @@ class Simulation:
 
         if seed:
             random.seed(seed)
+        else:
+            random_seed = random.randint(0, 1000000)
+            random.seed(random_seed)
+            log.error("Random seed: {}".format(random_seed))
 
         self.area = self.setup_module.get_setup(self.simulation_config)
         log.info("Starting simulation with config %s", self.simulation_config)
+
+        self._set_traversal_length()
+
         self.area.activate()
 
     @property
     def finished(self):
-        return self.area.current_tick == self.area.config.total_ticks
+        return self.area.current_tick >= self.area.config.total_ticks
 
     @property
     def time_since_start(self):
@@ -129,7 +154,7 @@ class Simulation:
     def stop(self):
         self.is_stopped = True
 
-    def run(self, resume=False) -> (Period, Interval):
+    def run(self, resume=False) -> (Period, duration):
         if resume:
             log.critical("Resuming simulation")
             self._info()
@@ -146,15 +171,15 @@ class Simulation:
                     raise RuntimeError("Can't resume without saved state")
                 slot_resume, tick_resume = divmod(self.area.current_tick, config.ticks_per_slot)
             else:
-                self.run_start = Pendulum.now()
+                self.run_start = DateTime.now()
                 self.paused_time = 0
                 slot_resume = tick_resume = 0
 
             try:
                 with NonBlockingConsole() as console:
-                    for slot_no in range(slot_resume, slot_count):
+                    for slot_no in range(slot_resume, slot_count-1):
                         run_duration = (
-                            Pendulum.now() - self.run_start - Interval(seconds=self.paused_time)
+                            DateTime.now() - self.run_start - duration(seconds=self.paused_time)
                         )
 
                         log.error(
@@ -201,11 +226,12 @@ class Simulation:
                                 self.endpoint_buffer
                             )
 
-                    run_duration = Pendulum.now() - self.run_start
-                    paused_duration = Interval(seconds=self.paused_time)
+                    run_duration = (
+                            DateTime.now() - self.run_start - duration(seconds=self.paused_time)
+                    )
+                    paused_duration = duration(seconds=self.paused_time)
 
                     self.redis_connection.publish_results(self.endpoint_buffer)
-
                     if not self.is_stopped:
                         log.error(
                             "Run finished in %s%s / %.2fx real time",
@@ -216,9 +242,8 @@ class Simulation:
                     if not self.exit_on_finish:
                         log.error("REST-API still running at %s", self.api_url)
                     if self.export_on_finish:
-                        export(self.area,
-                               self.export_path,
-                               Pendulum.now().format("%Y-%m-%d_%X"))
+                        ExportAndPlot(self.area, self.export_path,
+                                      DateTime.now().isoformat())
                     if self.use_repl:
                         self._start_repl()
                     elif self.reset_on_finish:
@@ -357,7 +382,7 @@ class Simulation:
         save_dir = Path('.d3a')
         save_dir.mkdir(exist_ok=True)
         save_file_name = save_dir.joinpath(
-            "saved-state_{:%Y%m%dT%H%M%S}.pickle".format(Pendulum.now())
+            "saved-state_{:%Y%m%dT%H%M%S}.pickle".format(DateTime.now())
         )
         with save_file_name.open('wb') as save_file:
             dill.dump(self, save_file, protocol=HIGHEST_PROTOCOL)

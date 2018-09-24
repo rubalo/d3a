@@ -1,13 +1,13 @@
 import pytest
 import pendulum
 import uuid
-from pendulum import Pendulum
+from pendulum import DateTime
 
 from d3a.models.area import DEFAULT_CONFIG
 from d3a.models.market import Offer, Trade
 from d3a.models.strategy.pv import PVStrategy
 from d3a.models.strategy.const import ConstSettings
-
+from d3a import TIME_FORMAT
 
 ENERGY_FORECAST = {}  # type: Dict[Time, float]
 TIME = pendulum.today().at(hour=10, minute=45, second=2)
@@ -26,15 +26,15 @@ class FakeArea():
         return DEFAULT_CONFIG
 
     @property
-    def now(self) -> Pendulum:
+    def now(self) -> DateTime:
         """
-        Return the 'current time' as a `Pendulum` object.
+        Return the 'current time' as a `DateTime` object.
         Can be overridden in subclasses to change the meaning of 'now'.
 
         In this default implementation 'current time' is defined by the number of ticks that
         have passed.
         """
-        return Pendulum.now().start_of('day').add_timedelta(
+        return DateTime.now().start_of('day') + (
             self.config.tick_length * self.current_tick
         )
 
@@ -58,6 +58,14 @@ class FakeMarket:
         self.created_offers.append(offer)
         self.offers[offer.id] = offer
         return offer
+
+    @property
+    def time_slot(self):
+        return DateTime.now().start_of('day')
+
+    @property
+    def time_slot_str(self):
+        return self.time_slot.strftime(TIME_FORMAT)
 
     def delete_offer(self, offer_id):
         return
@@ -90,7 +98,7 @@ def pv_test1(area_test1):
 
 def testing_activation(pv_test1, area_test1):
     pv_test1.event_activate()
-    # Pendulum.today() returns pendulum object with the date of today and midnight
+    # DateTime.today() returns pendulum object with the date of today and midnight
     assert pv_test1.midnight == pendulum.today()
     global ENERGY_FORECAST
     ENERGY_FORECAST = pv_test1.energy_production_forecast_kWh
@@ -170,7 +178,9 @@ def testing_decrease_offer_price(area_test3, pv_test3):
     pv_test3.event_market_cycle()
     for i in range(3):
         old_offer = list(pv_test3.offers.posted.keys())[0]
-        pv_test3.decrease_offer_price(area_test3.test_market)
+        pv_test3._decrease_offer_price(area_test3.test_market,
+                                       pv_test3._calculate_price_decrease_rate(
+                                           area_test3.test_market))
         new_offer = list(pv_test3.offers.posted.keys())[0]
         assert new_offer.price < old_offer.price
 
@@ -179,9 +189,11 @@ def test_same_slot_price_drop_does_not_reduce_price_below_threshold(area_test3, 
     pv_test3.event_activate()
     pv_test3.event_market_cycle()
     for _ in range(100):
-        pv_test3.decrease_offer_price(area_test3.test_market)
+        pv_test3._decrease_offer_price(area_test3.test_market,
+                                       pv_test3._calculate_price_decrease_rate(
+                                           area_test3.test_market))
     new_offer = list(pv_test3.offers.posted.keys())[-1]
-    assert new_offer.price / new_offer.energy >= ConstSettings.MIN_PV_SELLING_PRICE
+    assert new_offer.price / new_offer.energy >= ConstSettings.MIN_PV_SELLING_RATE
 
 
 """TEST 4"""
@@ -296,7 +308,7 @@ def testing_produced_energy_forecast_real_data(pv_test6, market_test3):
 
 def test_does_not_offer_sold_energy_again(pv_test6, market_test3):
     pv_test6.event_activate()
-    pv_test6.event_tick(area=area_test3)
+    pv_test6.event_market_cycle()
     assert market_test3.created_offers[0].energy == pv_test6.energy_production_forecast_kWh[TIME]
     fake_trade = FakeTrade(market_test3.created_offers[0])
     pv_test6.event_trade(market=market_test3, trade=fake_trade)
@@ -333,7 +345,9 @@ def testing_low_risk(area_test3, pv_test7):
     pv_test7.event_market_cycle()
     for i in range(3):
         old_offer = list(pv_test7.offers.posted.keys())[0]
-        pv_test7.decrease_offer_price(area_test3.test_market)
+        pv_test7._decrease_offer_price(area_test3.test_market,
+                                       pv_test7._calculate_price_decrease_rate(
+                                           area_test3.test_market))
         new_offer = list(pv_test7.offers.posted.keys())[0]
         price_dec_per_slot = (area_test3.historical_avg_rate) * (1 - pv_test7.risk
                                                                  / ConstSettings.MAX_RISK)
@@ -362,7 +376,9 @@ def testing_high_risk(area_test3, pv_test8):
     pv_test8.event_market_cycle()
     for i in range(3):
         old_offer = list(pv_test8.offers.posted.keys())[0]
-        pv_test8.decrease_offer_price(area_test3.test_market)
+        pv_test8._decrease_offer_price(area_test3.test_market,
+                                       pv_test8._calculate_price_decrease_rate(
+                                           area_test3.test_market))
         new_offer = list(pv_test8.offers.posted.keys())[0]
         price_dec_per_slot = (area_test3.historical_avg_rate) * (1 - pv_test8.risk /
                                                                  ConstSettings.MAX_RISK)
@@ -397,5 +413,5 @@ def pv_test9(area_test9):
 
 def testing_number_of_pv_sell_offers(pv_test9, market_test9, area_test9):
     pv_test9.event_activate()
-    pv_test9.event_tick(area=area_test9)
+    pv_test9.event_market_cycle()
     assert len(market_test9.created_offers) == 1
