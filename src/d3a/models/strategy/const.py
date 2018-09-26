@@ -90,7 +90,7 @@ class ConstSettings:
 
     # INTER_AREA_AGENT
     # This parameter is modified by the Simulation class
-    MAX_OFFER_TRAVERSAL_LENGTH = None
+    MAX_OFFER_TRAVERSAL_LENGTH = 6
 
     INTER_AREA_AGENT_FEE_PERCENTAGE = 1
 

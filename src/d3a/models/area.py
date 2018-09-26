@@ -460,9 +460,7 @@ class Area:
 
         # Also broadcast to IAAs. Again in random order
         for market, agents in self.inter_area_agents.items():
-            print(market)
             if market.time_slot not in self.markets:
-                print(self.markets)
                 # exclude past IAAs
                 continue
             for agent in sorted(agents, key=lambda _: random()):
@@ -489,6 +487,7 @@ class Area:
         self.listeners.append(listener)
 
     def event_listener(self, event_type: Union[MarketEvent, AreaEvent], **kwargs):
+        self.read_market_from_main_process(self, self.current_market.time_slot, )
         if event_type is AreaEvent.TICK:
             self.tick()
         elif event_type is AreaEvent.MARKET_CYCLE:

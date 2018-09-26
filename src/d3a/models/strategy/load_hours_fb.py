@@ -105,7 +105,7 @@ class LoadHoursStrategy(BaseStrategy, BidUpdateFrequencyMixin):
         if self.are_bids_posted(self.area.next_market):
             self.update_posted_bids(self.area.next_market)
 
-    def event_tick(self, *, area):
+    def event_tick(self, *, area_id):
         if self.energy_requirement_Wh <= 0:
             return
 

@@ -227,7 +227,6 @@ class IAAEngine:
                                          "{} (Forwarded offer not found)".format(trade.offer))
 
             try:
-                """ IPC HERE """
                 if trade.price_drop:
                     # Use the rate of the trade offer for accepting the source offer too
                     # Drop the rate of the trade offer according to IAA fee
@@ -336,7 +335,7 @@ class IAAEngine:
 
             self.trade_residual[existing_offer.id] = new_offer
 
-        elif market_id == self.markets.source.id and \
+        elif market_id == self.markets.source.market_id and \
                 existing_offer.id in self.forwarded_offers:
             # an offer in the source market was split - delete the corresponding offer
             # in the target market and forward the new residual offer
@@ -419,7 +418,7 @@ class InterAreaAgent(BaseStrategy):
         for engine in self.engines:
             engine.tick(area=area)
 
-    def event_trade(self, *, market, trade):
+    def event_trade(self, *, market_id, trade):
         for engine in self.engines:
             engine.event_trade(trade=trade)
 
@@ -452,7 +451,7 @@ class BalancingAgent(InterAreaAgent):
                                 lower_market=lower_market, transfer_fee_pct=transfer_fee_pct,
                                 min_offer_age=min_offer_age)
 
-    def event_trade(self, *, market, trade):
+    def event_trade(self, *, market_id, trade):
         if trade.buyer != self.owner.name:
             return
         positive_balancing_energy = trade.offer.energy * self.balancing_spot_trade_ratio

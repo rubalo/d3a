@@ -129,7 +129,7 @@ class Market:
             raise MarketReadOnlyException()
         if energy <= 0:
             raise InvalidOffer()
-        offer = Offer(str(uuid.uuid4()), price, energy, seller, self)
+        offer = Offer(str(uuid.uuid4()), price, energy, seller)
         self.offers[offer.id] = offer
         self._sorted_offers = sorted(self.offers.values(), key=lambda o: o.price / o.energy)
         log.info("[OFFER][NEW] %s", offer)
@@ -233,15 +233,13 @@ class Market:
                         offer.id,
                         offer.price / offer.energy * energy,
                         energy,
-                        offer.seller,
-                        offer.market
+                        offer.seller
                     )
                     residual_offer = Offer(
                         str(uuid.uuid4()),
                         offer.price / offer.energy * (offer.energy - energy),
                         offer.energy - energy,
-                        offer.seller,
-                        offer.market
+                        offer.seller
                     )
                     self.offers[residual_offer.id] = residual_offer
                     log.info("[OFFER][CHANGED] %s -> %s", original_offer, residual_offer)
@@ -270,7 +268,6 @@ class Market:
         self._update_stats_after_trade(trade, offer, buyer)
         log.warning("[TRADE] %s", trade)
 
-        offer._traded(trade, self)
         self._notify_listeners(MarketEvent.TRADE, trade=trade)
         return trade
 
@@ -533,7 +530,6 @@ class BalancingMarket(Market):
         self._update_min_max_avg_trade_prices(offer.price / offer.energy)
         # Recalculate offer min/max price since offer was removed
         self._update_min_max_avg_offer_prices()
-        offer._traded(trade, self)
         self._notify_listeners(MarketEvent.BALANCING_TRADE, trade=trade)
         return trade
 
