@@ -66,7 +66,9 @@ class PVStrategy(BaseStrategy, OfferUpdateFrequencyMixin):
 
         return rounded_energy_rate
 
-    def event_tick(self, *, area):
+    def event_tick(self, *, area_id):
+        if area_id != self.area.area_id:
+            return
         for market in list(self.area.markets.values()):
             self.decrease_energy_price_over_ticks(market)
 
@@ -129,14 +131,18 @@ class PVStrategy(BaseStrategy, OfferUpdateFrequencyMixin):
         self.risk = new_risk
         self.log.warning("Risk changed to %s", new_risk)
 
-    def event_offer_deleted(self, *, market, offer):
+    def event_offer_deleted(self, *, market_id, offer):
+        market = [market for _, market in self.area.markets.items()
+                  if market.market_id == market_id][0]
         # if offer was deleted but not traded, free the energy in state.available_energy_kWh again
         if offer.id not in [trades.offer.id for trades in market.trades]:
             if offer.seller == self.owner.name:
                 self.state.available_energy_kWh[market.time_slot] += offer.energy
 
-    def event_offer(self, *, market, offer):
+    def event_offer(self, *, market_id, offer):
         # if offer was deleted but not traded, free the energy in state.available_energy_kWh again
+        market = [market for _, market in self.area.markets.items()
+                  if market.market_id == market_id][0]
         if offer.id not in [trades.offer.id for trades in market.trades]:
             if offer.seller == self.owner.name:
                 self.state.available_energy_kWh[market.time_slot] -= offer.energy

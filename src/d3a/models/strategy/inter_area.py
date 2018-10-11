@@ -209,7 +209,7 @@ class IAAEngine:
             raise Exception(f"Invalid bid state for IAA {self.owner.name}: "
                             f"traded bid {bid_trade} was not in offered bids tuple {bid_info}")
 
-    def event_trade(self, *, trade):
+    def event_trade(self, *, market_id, trade):
         offer_info = self.forwarded_offers.get(trade.offer.id)
         if not offer_info:
             # Trade doesn't concern us
@@ -306,7 +306,7 @@ class IAAEngine:
                 self.owner.log.exception("Error deleting InterAreaAgent offer")
         self._delete_forwarded_bid_entries(bid_info.source_bid)
 
-    def event_offer_deleted(self, *, offer):
+    def event_offer_deleted(self, *, market_id, offer):
         if offer.id in self.offer_age:
             # Offer we're watching in source market was deleted - remove
             del self.offer_age[offer.id]
@@ -424,7 +424,7 @@ class InterAreaAgent(BaseStrategy):
 
     def event_trade(self, *, market_id, trade):
         for engine in self.engines:
-            engine.event_trade(trade=trade)
+            engine.event_trade(market_id=market_id, trade=trade)
 
     def event_bid_traded(self, *, market, bid_trade):
         for engine in self.engines:
@@ -434,9 +434,9 @@ class InterAreaAgent(BaseStrategy):
         for engine in self.engines:
             engine.event_bid_deleted(bid=bid)
 
-    def event_offer_deleted(self, *, market, offer):
+    def event_offer_deleted(self, *, market_id, offer):
         for engine in self.engines:
-            engine.event_offer_deleted(offer=offer)
+            engine.event_offer_deleted(market_id=market_id, offer=offer)
 
     def event_offer_changed(self, *, market_id, existing_offer, new_offer):
         for engine in self.engines:
@@ -455,7 +455,13 @@ class BalancingAgent(InterAreaAgent):
                                 min_offer_age=min_offer_age, balancing_agent=True)
         self.name = make_ba_name(self.owner)
 
-    def event_trade(self, *, market, trade):
+    def event_trade(self, *, market_id, trade):
+        if market_id == self.lower_market.market_id:
+            market = self.lower_market
+        elif market_id == self.higher_market.market_id:
+            market = self.higher_market
+        else:
+            return
         if trade.buyer != make_iaa_name(self.owner) or \
                 market.time_slot != self.lower_market.time_slot:
             return
@@ -499,10 +505,10 @@ class BalancingAgent(InterAreaAgent):
 
     def event_balancing_trade(self, *, market, trade, offer=None):
         for engine in self.engines:
-            engine.event_trade(trade=trade)
+            engine.event_trade(market_id=market.market_id, trade=trade)
 
     def event_balancing_offer_changed(self, *, market, existing_offer, new_offer):
         for engine in self.engines:
-            engine.event_offer_changed(market=market,
+            engine.event_offer_changed(market_id=market.market_id,
                                        existing_offer=existing_offer,
                                        new_offer=new_offer)

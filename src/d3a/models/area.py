@@ -89,13 +89,23 @@ class MultiprocessMarketWrapper:
         self.manager = Manager()
         self.markets = self.manager.dict()
 
-    def append_market(self, area_name, timeslot, market):
-        if area_name not in self.markets.keys():
-            self.markets[area_name] = self.manager.dict()
-        self.markets[area_name][timeslot] = MarketSerializer(market)
+    def read_markets(self, area, broadcasts):
+        if area.name not in self.markets:
+            return {}
+        return \
+            {timeslot: market_factory(m, area, broadcasts)
+             for timeslot, m in self.markets[area.name].items()}
 
-    def read_market_from_main_process(self, area, timeslot, broadcasts):
-        return market_factory(self.markets[area.name][timeslot], area, broadcasts)
+    def write_markets(self, area_name, markets):
+        if area_name not in self.markets:
+            self.markets[area_name] = self.manager.dict()
+        for m in markets:
+            self.markets[area_name][m.time_slot] = MarketSerializer(m)
+
+    def read_market_from_main_process(self, area, broadcasts):
+        return \
+            {timeslot: market_factory(self.markets[area.name][timeslot], area, broadcasts)
+             for timeslot in self.markets.keys()}
 
     def add_market_to_queue(self, queue, market):
         queue.put(MarketSerializer(market), block=False)
@@ -107,6 +117,11 @@ class MultiprocessMarketWrapper:
                                                      area,
                                                      broadcasts)
                     for market in markets}
+
+    def append_market(self, area_name, timeslot, market):
+        if area_name not in self.markets.keys():
+            self.markets[area_name] = self.manager.dict()
+        self.markets[area_name][timeslot] = MarketSerializer(market)
 
 
 class Area:
@@ -153,34 +168,27 @@ class Area:
         self._accumulated_past_price = 0
         self._accumulated_past_energy = 0
         self.spawn_process = spawn_process
-        if spawn_process:
-            self.area_queue = Queue()
-            self.market_queue = Queue()
-            self.event = Event()
-            self.area_process = Process(target=self.process_event_loop,
-                                        args=(self.area_queue, self.market_queue, self.event))
-            self.area_process.start()
-        else:
-            self.area_process = None
+        self.is_parent_process = True
+        self.area_process = None
 
-    def process_event_loop(self, event_queue, market_queue, event):
-        market_buffer = None
+    def process_event_loop(self, event_queue, market_queue, market_wrapper, event):
+        for child in self.children:
+            child.is_parent_process = False
         while True:
-            if not market_queue.empty():
-                markets = market_queue.get()
-                market_buffer = {market.time_slot: market_factory(market,
-                                                                  self,
-                                                                  self._broadcast_notification)
-                                 for market in markets}
-                if self.parent:
-                    self.parent.markets = market_buffer
+            self.is_parent_process = False
+            self.parent.is_parent_process = False
             if not event_queue.empty() and not event.is_set():
                 area_event = event_queue.get()
-                if self.parent:
-                    self.parent.markets = market_buffer
                 event_type = area_event[0]
                 keywordargs = area_event[1]
+                if self.parent:
+                    self.parent.markets = market_wrapper.read_markets(
+                        self.parent, self.parent._broadcast_notification
+                    )
+                self.markets = market_wrapper.read_markets(self, self._broadcast_notification)
                 self.event_listener(event_type=event_type, **keywordargs)
+                market_wrapper.write_markets(self.name, self.markets.values())
+                market_wrapper.write_markets(self.parent.name, self.parent.markets.values())
                 event.set()
 
     def activate(self, bc=None):
@@ -213,6 +221,17 @@ class Area:
         self.active = True
 
         self._broadcast_notification(AreaEvent.ACTIVATE)
+
+        if self.spawn_process:
+            self.market_wrapper = MultiprocessMarketWrapper()
+            self.area_queue = Queue()
+            self.market_queue = Queue()
+            self.event_processed_event = Event()
+            self.area_process = Process(target=self.process_event_loop,
+                                        args=(self.area_queue, self.market_queue,
+                                              self.market_wrapper,
+                                              self.event_processed_event))
+            self.area_process.start()
 
     def __repr__(self):
         return "<Area '{s.name}' markets: {markets}>".format(
@@ -397,12 +416,16 @@ class Area:
                                         agent_class=BalancingAgent,
                                         market_class=BalancingMarket)
 
+        if hasattr(self, "market_wrapper"):
+            self.market_wrapper.write_markets(self.name, self.markets.values())
+            self.market_wrapper.write_markets(self.parent.name, self.parent.markets.values())
+
         # TODO: Market serializer
-        for child in self.children:
-            if child.spawn_process:
-                child.market_queue.put([MarketSerializer(market)
-                                       for _, market in self.markets.items()],
-                                       block=False)
+        # for child in self.children:
+        #     if child.spawn_process:
+        #         child.market_queue.put([MarketSerializer(market)
+        #                                for _, market in self.markets.items()],
+        #                                block=False)
 
         # Force market cycle event in case this is the first market slot
         if (changed or len(self.past_markets.keys()) == 0) and _trigger_event:
@@ -460,7 +483,11 @@ class Area:
         # Broadcast to children in random order to ensure fairness
         children_to_wait = []
         for child in sorted(self.children, key=lambda _: random()):
-            if child.area_process is not None:
+            if child.area_process is not None and self.is_parent_process:
+                if hasattr(self, "market_wrapper"):
+                    self.market_wrapper.write_markets(self.name, self.markets.values())
+                    self.market_wrapper.write_markets(
+                        self.parent.name, self.parent.markets.values())
                 child.area_queue.put([event_type, kwargs])
                 children_to_wait.append(child)
             else:
@@ -468,8 +495,13 @@ class Area:
 
         if children_to_wait != []:
             for child in children_to_wait:
-                child.event.wait()
-                child.event.clear()
+                child.event_processed_event.wait()
+                child.event_processed_event.clear()
+                if hasattr(self, "market_wrapper"):
+                    self.markets = self.market_wrapper.read_markets(
+                        self, self._broadcast_notification)
+                    self.parent.markets = self.market_wrapper.read_markets(
+                        self.parent, self.parent._broadcast_notification)
 
         # Also broadcast to IAAs. Again in random order
         for market, agents in self.inter_area_agents.items():
@@ -500,7 +532,6 @@ class Area:
         self.listeners.append(listener)
 
     def event_listener(self, event_type: Union[MarketEvent, AreaEvent], **kwargs):
-        self.read_market_from_main_process(self, self.current_market.time_slot, )
         if event_type is AreaEvent.TICK:
             self.tick()
         # TODO: Review this change. Make sure this trigger is not needed anywhere else

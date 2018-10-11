@@ -162,7 +162,7 @@ class Market:
     def _notify_listeners(self, event, **kwargs):
         # Deliver notifications in random order to ensure fairness
         for listener in sorted(self.notification_listeners, key=lambda l: random.random()):
-            listener(event, market_id=self.market_id, **kwargs)
+            listener(event, **kwargs)
 
     def offer(self, price: float, energy: float, seller: str,
               balancing_agent: bool=False) -> Offer:
@@ -176,12 +176,12 @@ class Market:
             if self.bc_contract \
             else str(uuid.uuid4())
 
-        offer = Offer(offer_id, price, energy, seller, self)
+        offer = Offer(offer_id, price, energy, seller)
         self.offers[offer.id] = offer
         self._sorted_offers = sorted(self.offers.values(), key=lambda o: o.price / o.energy)
         log.info(f"[OFFER][NEW][{self.time_slot_str}] {offer}")
         self._update_min_max_avg_offer_prices()
-        self._notify_listeners(MarketEvent.OFFER, offer=offer)
+        self._notify_listeners(MarketEvent.OFFER, market_id=self.market_id, offer=offer)
         return offer
 
     def bid(self, price: float, energy: float, buyer: str, seller: str, bid_id: str=None) -> Bid:
@@ -212,7 +212,7 @@ class Market:
         log.info(f"[OFFER][DEL][{self.time_slot_str}] {offer}")
 
         # TODO: Once we add event-driven blockchain, this should be asynchronous
-        self._notify_listeners(MarketEvent.OFFER_DELETED, offer=offer)
+        self._notify_listeners(MarketEvent.OFFER_DELETED, market_id=self.market_id, offer=offer)
 
     def delete_bid(self, bid_or_id: Union[str, Bid]):
         if isinstance(bid_or_id, Bid):
@@ -311,6 +311,7 @@ class Market:
                                                      key=lambda o: o.price / o.energy)
                         self._notify_listeners(
                             MarketEvent.OFFER_CHANGED,
+                            market_id=self.market_id,
                             existing_offer=original_offer,
                             new_offer=residual_offer
                         )
@@ -344,7 +345,7 @@ class Market:
 
         # TODO: Use non-blockchain non-event-driven version for now for both blockchain and
         # normal runs.
-        self._notify_listeners(MarketEvent.TRADE, trade=trade)
+        self._notify_listeners(MarketEvent.TRADE, market_id=self.market_id, trade=trade)
         return trade
 
     def _handle_blockchain_trade_event(self, offer, buyer, original_offer, residual_offer):
