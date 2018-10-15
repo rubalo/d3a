@@ -67,10 +67,13 @@ class Bid(namedtuple('Bid', ('id', 'price', 'energy', 'buyer', 'seller', 'market
 
 
 class Trade(namedtuple('Trade', ('id', 'time', 'offer', 'seller',
-                                 'buyer', 'residual', 'price_drop'))):
-    def __new__(cls, id, time, offer, seller, buyer, residual=None, price_drop=False):
+                                 'buyer', 'residual', 'price_drop',
+                                 'already_tracked'))):
+    def __new__(cls, id, time, offer, seller, buyer, residual=None,
+                price_drop=False, already_tracked=False):
         # overridden to give the residual field a default value
-        return super(Trade, cls).__new__(cls, id, time, offer, seller, buyer, residual, price_drop)
+        return super(Trade, cls).__new__(cls, id, time, offer, seller, buyer, residual,
+                                         price_drop, already_tracked)
 
     def __str__(self):
         mark_partial = "(partial)" if self.residual is not None else ""
@@ -86,9 +89,8 @@ class Trade(namedtuple('Trade', ('id', 'time', 'offer', 'seller',
                 cls._fields[3:5])
 
     def _to_csv(self):
-        price = round(self.offer.price / self.offer.energy, 4)
-        # residual_energy = 0 if self.residual is None else self.residual.energy
-        return self[:2] + (price, self.offer.energy) + self[3:5]
+        rate = round(self.offer.price / self.offer.energy, 4)
+        return self[:2] + (rate, self.offer.energy) + self[3:5]
 
 
 class Market:
@@ -224,7 +226,7 @@ class Market:
         self._notify_listeners(MarketEvent.BID_DELETED, bid=bid)
 
     def accept_bid(self, bid: Bid, energy: float = None,
-                   seller: str = None, buyer: str = None, track_bid: bool = True,
+                   seller: str = None, buyer: str = None, already_tracked: bool = False,
                    price_drop: bool = True):
         market_bid = self.bids.pop(bid.id, None)
         if market_bid is None:
@@ -251,9 +253,10 @@ class Market:
                           buyer, seller, self)
 
             trade = Trade(str(uuid.uuid4()), self._now,
-                          bid, seller, buyer, residual, price_drop=price_drop)
-            self._update_stats_after_trade(trade, bid, bid.buyer, track_bid)
-            if track_bid:
+                          bid, seller, buyer, residual, price_drop=price_drop,
+                          already_tracked=already_tracked)
+            self._update_stats_after_trade(trade, bid, bid.buyer, already_tracked)
+            if not already_tracked:
                 log.warning(f"[TRADE][BID][{self.time_slot_str}] {trade}")
 
             self._notify_listeners(MarketEvent.BID_TRADED, bid_trade=trade)
@@ -367,11 +370,11 @@ class Market:
             trade_id = str(uuid.uuid4())
         return trade_id, residual_offer
 
-    def _update_stats_after_trade(self, trade, offer, buyer, track_trade=True):
+    def _update_stats_after_trade(self, trade, offer, buyer, already_tracked=False):
         # FIXME: The following updates need to be done in response to the BC event
         # TODO: For now event driven blockchain updates have been disabled in favor of a
         # sequential approach, but once event handling is enabled this needs to be handled
-        if track_trade:
+        if not already_tracked:
             self.trades.append(trade)
         self._update_accumulated_trade_price_energy(trade)
         self.traded_energy[offer.seller] += offer.energy
@@ -516,26 +519,40 @@ class BalancingOffer(Offer):
                                                              rate=self.price / self.energy)
 
 
-class BalancingTrade():
+class BalancingTrade(namedtuple('BalancingTrade', ('id', 'time', 'offer', 'seller',
+                                                   'buyer', 'residual', 'price_drop'))):
     def __new__(cls, id, time, offer, seller, buyer, residual=None, price_drop=False):
         # overridden to give the residual field a default value
-        return Trade(id, time, offer, seller, buyer, residual, price_drop)
+        return super(BalancingTrade, cls).__new__(cls, id, time, offer, seller,
+                                                  buyer, residual, price_drop)
 
     def __str__(self):
         mark_partial = "(partial)" if self.residual is not None else ""
         return (
-            "<BalancingTrade{{{s.id!s:.6s}}} [{s.seller} -> {s.buyer}] "
-            "{s.offer.energy} kWh {p} @ {s.offer.price} {rate} {s.offer.id}>".
+            "{{{s.id!s:.6s}}} [{s.seller} -> {s.buyer}] "
+            "{s.offer.energy} kWh {p} @ {s.offer.price} {rate} {s.offer.id}".
             format(s=self, p=mark_partial, rate=self.offer.price / self.offer.energy)
         )
+
+    @classmethod
+    def _csv_fields(cls):
+        return (cls._fields[:2] + ('rate [ct./kWh]', 'energy [kWh]') +
+                cls._fields[3:5])
+
+    def _to_csv(self):
+        rate = round(self.offer.price / self.offer.energy, 4)
+        return self[:2] + (rate, self.offer.energy) + self[3:5]
 
 
 class BalancingMarket(Market):
     def __init__(self, time_slot=None, area=None, notification_listener=None, readonly=False):
         self.unmatched_energy_upward = 0
         self.unmatched_energy_downward = 0
-        self.cumulative_energy_traded_upward = 0
-        self.cumulative_energy_traded_downward = 0
+        self.accumulated_supply_balancing_trade_price = 0
+        self.accumulated_supply_balancing_trade_energy = 0
+        self.accumulated_demand_balancing_trade_price = 0
+        self.accumulated_demand_balancing_trade_energy = 0
+
         Market.__init__(self, time_slot, area, notification_listener, readonly)
 
     def offer(self, price: float, energy: float, seller: str, balancing_agent: bool=False):
@@ -554,7 +571,7 @@ class BalancingMarket(Market):
         self.offers[offer.id] = offer
         self._sorted_offers = \
             sorted(self.offers.values(), key=lambda o: o.price / o.energy)
-        log.info("[BALANCING_OFFER][NEW] %s", offer)
+        log.info(f"[BALANCING_OFFER][NEW][{self.time_slot_str}] {offer}")
         self._notify_listeners(MarketEvent.BALANCING_OFFER, offer=offer)
         return offer
 
@@ -599,8 +616,8 @@ class BalancingMarket(Market):
                         offer.market
                     )
                     self.offers[residual_offer.id] = residual_offer
-                    log.info("[BALANCING_OFFER][CHANGED] %s -> %s",
-                             original_offer, residual_offer)
+                    log.info(f"[BALANCING_OFFER][CHANGED][{self.time_slot_str}] "
+                             f"{original_offer} -> {residual_offer}")
                     offer = accepted_offer
                     self._sorted_offers = sorted(self.offers.values(),
                                                  key=lambda o: o.price / o.energy)
@@ -627,7 +644,7 @@ class BalancingMarket(Market):
                                residual=residual_offer, price_drop=price_drop)
         self.trades.append(trade)
         self._update_accumulated_trade_price_energy(trade)
-        log.warning("[BALANCING_TRADE] %s", trade)
+        log.warning(f"[BALANCING_TRADE][{self.time_slot_str}] {trade}")
         self.traded_energy[offer.seller] += offer.energy
         self.traded_energy[buyer] -= offer.energy
         self.ious[buyer][offer.seller] += offer.price
@@ -647,5 +664,25 @@ class BalancingMarket(Market):
         self._update_min_max_avg_offer_prices()
         if not offer:
             raise OfferNotFoundException()
-        log.info("[BALANCING_OFFER][DEL] %s", offer)
+        log.info(f"[BALANCING_OFFER][DEL][{self.time_slot_str}] {offer}")
         self._notify_listeners(MarketEvent.BALANCING_OFFER_DELETED, offer=offer)
+
+    def _update_accumulated_trade_price_energy(self, trade):
+        if trade.offer.energy > 0:
+            self.accumulated_supply_balancing_trade_price += trade.offer.price
+            self.accumulated_supply_balancing_trade_energy += trade.offer.energy
+        elif trade.offer.energy < 0:
+            self.accumulated_demand_balancing_trade_price += trade.offer.price
+            self.accumulated_demand_balancing_trade_energy += abs(trade.offer.energy)
+
+    @property
+    def avg_supply_balancing_trade_rate(self):
+        price = self.accumulated_supply_balancing_trade_price
+        energy = self.accumulated_supply_balancing_trade_energy
+        return round(price / energy, 4) if energy else 0
+
+    @property
+    def avg_demand_balancing_trade_rate(self):
+        price = self.accumulated_demand_balancing_trade_price
+        energy = self.accumulated_demand_balancing_trade_energy
+        return round(price / energy, 4) if energy else 0
