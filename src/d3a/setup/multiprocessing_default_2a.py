@@ -11,34 +11,94 @@ def get_setup(config):
         'Grid',
         [
             Area(
-                'House 1',
+                'Street 1',
                 spawn_process=True,
                 children=[
-                    Area('H1 General Load', strategy=LoadHoursStrategy(avg_power_W=200,
-                                                                       hrs_per_day=6,
-                                                                       hrs_of_day=list(
-                                                                           range(12, 18)),
-                                                                       max_energy_rate=35),
-                         appliance=SwitchableAppliance()),
-                    Area('H1 Storage1', strategy=StorageStrategy(initial_capacity=0.6),
-                         appliance=SwitchableAppliance()),
-                    Area('H1 Storage2', strategy=StorageStrategy(initial_capacity=0.6),
-                         appliance=SwitchableAppliance()),
+                    *[Area(
+                        f'S1 House {i}',
+                        children=[
+                            Area(f'S1 H{i} General Load',
+                                 strategy=LoadHoursStrategy(avg_power_W=50,
+                                                            hrs_per_day=6,
+                                                            hrs_of_day=list(
+                                                                range(12, 18)),
+                                                            max_energy_rate=35),
+                                 appliance=SwitchableAppliance()),
+                            Area(f'S1 H{i} Storage1',
+                                 strategy=StorageStrategy(battery_capacity=10, initial_capacity=6),
+                                 appliance=SwitchableAppliance()),
+                            Area(f'S1 H{i} Storage2',
+                                 strategy=StorageStrategy(battery_capacity=10, initial_capacity=6),
+                                 appliance=SwitchableAppliance()),
+                        ]
+                    ) for i in range(50)]
                 ]
             ),
             Area(
-                'House 2',
-                spawn_process=False,
+                'Street 2',
+                spawn_process=True,
                 children=[
-                    Area('H2 General Load', strategy=LoadHoursStrategy(avg_power_W=200,
-                                                                       hrs_per_day=4,
-                                                                       hrs_of_day=list(
-                                                                           range(12, 16)),
-                                                                       max_energy_rate=35),
-                         appliance=SwitchableAppliance()),
-                    Area('H2 PV', strategy=PVStrategy(4, 80),
-                         appliance=PVAppliance()),
+                    *[Area(
+                        f'S2 House {i}',
+                        children=[
+                            Area(f'S2 H{i} General Load',
+                                 strategy=LoadHoursStrategy(avg_power_W=200,
+                                                            hrs_per_day=4,
+                                                            hrs_of_day=list(
+                                                                range(12, 16)),
+                                                            max_energy_rate=35),
+                                 appliance=SwitchableAppliance()),
+                            Area(f'S2 H{i} Storage1',
+                                 strategy=StorageStrategy(battery_capacity=10, initial_capacity=6),
+                                 appliance=SwitchableAppliance()),
+                            Area(f'S2 H{i} Storage2',
+                                 strategy=StorageStrategy(battery_capacity=10, initial_capacity=6),
+                                 appliance=SwitchableAppliance()),
 
+                        ]
+                    ) for i in range(50)]
+                ]
+            ),
+            Area(
+                'Street 3',
+                spawn_process=True,
+                children=[
+                    *[Area(
+                        f'S3 House {i}',
+                        children=[
+                            Area(f'S3 H{i} General Load',
+                                 strategy=LoadHoursStrategy(avg_power_W=200,
+                                                            hrs_per_day=4,
+                                                            hrs_of_day=list(
+                                                                range(12, 16)),
+                                                            max_energy_rate=35),
+                                 appliance=SwitchableAppliance()),
+                            Area(f'S3 H{i} PV', strategy=PVStrategy(4, 80),
+                                 appliance=PVAppliance()),
+
+                        ]
+                    ) for i in range(50)]
+                ]
+            ),
+            Area(
+                'Street 4',
+                spawn_process=True,
+                children=[
+                    *[Area(
+                        f'S4 House {i}',
+                        children=[
+                            Area(f'S4 H{i} General Load',
+                                 strategy=LoadHoursStrategy(avg_power_W=200,
+                                                            hrs_per_day=4,
+                                                            hrs_of_day=list(
+                                                                range(12, 16)),
+                                                            max_energy_rate=35),
+                                 appliance=SwitchableAppliance()),
+                            Area(f'S4 H{i} PV', strategy=PVStrategy(4, 80),
+                                 appliance=PVAppliance()),
+
+                        ]
+                    ) for i in range(50)]
                 ]
             ),
             Area('Cell Tower', strategy=CellTowerLoadHoursStrategy(avg_power_W=100,

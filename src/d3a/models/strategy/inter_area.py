@@ -133,7 +133,6 @@ class IAAEngine:
 
     def tick(self, *, area):
         # Store age of offer
-        """ IPC HERE """
         for offer in self.markets.source.sorted_offers:
             if offer.id not in self.offer_age:
                 self.offer_age[offer.id] = area.current_tick
@@ -144,7 +143,6 @@ class IAAEngine:
                 continue
             if area.current_tick - age < self.min_offer_age:
                 continue
-            """ IPC HERE """
             offer = self.markets.source.offers.get(offer_id)
             if not offer:
                 # Offer has gone - remove from age dict

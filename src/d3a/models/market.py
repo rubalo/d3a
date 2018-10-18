@@ -333,7 +333,7 @@ class Market:
         trade_id = self._handle_blockchain_trade_event(offer, buyer,
                                                        original_offer, residual_offer)
         trade = Trade(trade_id, time, offer, offer.seller, buyer,
-                      residual_offer, price_drop)
+                      residual_offer, price_drop, already_tracked=False)
         if self.area and self.area.bc:
             self._trades_by_id[trade_id] = trade
 
