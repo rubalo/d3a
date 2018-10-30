@@ -6,6 +6,8 @@ from d3a.exceptions import SimulationException
 from d3a.models.base import AreaBehaviorBase
 from d3a.models.events import EventMixin, TriggerMixin, Trigger, AreaEvent, MarketEvent
 from d3a.models.market import Market, Offer  # noqa
+from d3a.models.strategy.const import ConstSettings
+from d3a.device_registry import DeviceRegistry
 
 
 log = getLogger(__name__)
@@ -102,7 +104,7 @@ class Offers:
         except AttributeError:
             raise SimulationException("Trade event before strategy was initialized.")
 
-    def on_offer_changed(self, market, existing_offer, new_offer):
+    def on_offer_changed(self, existing_offer, new_offer):
         if existing_offer.seller == self.strategy.owner.name:
             assert existing_offer.id not in self.changed, \
                    "Offer should only change once before each trade."
@@ -146,6 +148,12 @@ class BaseStrategy(TriggerMixin, EventMixin, AreaBehaviorBase):
             else t.offer.energy
             for t in self.trades[market]
         )
+
+    @property
+    def is_eligible_for_balancing_market(self):
+        if self.owner.name in DeviceRegistry.REGISTRY and \
+                ConstSettings.BalancingSettings.ENABLE_BALANCING_MARKET:
+            return True
 
     def accept_offer(self, market: Market, offer, *, buyer=None, energy=None, price_drop=False):
         if buyer is None:
@@ -219,13 +227,8 @@ class BaseStrategy(TriggerMixin, EventMixin, AreaBehaviorBase):
             super().event_listener(event_type, **kwargs)
 
     def event_trade(self, *, market_id, trade):
-        for market in self.area.markets.values():
-            if market.market_id == market_id:
-                self.offers.on_trade(market, trade)
-
-        for market in self.owner.markets.values():
-            if market.market_id == market_id:
-                self.offers.on_trade(market, trade)
+        market = self.area.get_future_market_from_id(market_id)
+        self.offers.on_trade(market, trade)
 
     def event_offer_changed(self, *, market_id, existing_offer, new_offer):
-        self.offers.on_offer_changed(market_id, existing_offer, new_offer)
+        self.offers.on_offer_changed(existing_offer, new_offer)

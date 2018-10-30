@@ -16,23 +16,23 @@ class CommercialStrategy(BaseStrategy):
         self.energy_rate = energy_rate
 
     def _markets_to_offer_on_activate(self):
-        return self.area.markets.values()
+        return self.area.all_markets
 
     def event_activate(self):
         # That's usually an init function but the markets aren't open during the init call
         for market in self._markets_to_offer_on_activate():
             self.offer_energy(market)
 
-        for market in self.area.balancing_markets.values():
+        for market in self.area.balancing_markets:
             self._offer_balancing_energy(market)
 
     def event_market_cycle(self):
         # Post new offers
-        market = list(self.area.markets.values())[-1]
+        market = self.area.all_markets[-1]
         self.offer_energy(market)
 
-        if len(self.area.balancing_markets.values()) > 0:
-            balancing_market = list(self.area.balancing_markets.values())[-1]
+        if len(self.area.balancing_markets) > 0:
+            balancing_market = self.area.balancing_markets[-1]
             self._offer_balancing_energy(balancing_market)
 
     def offer_energy(self, market):
@@ -48,7 +48,7 @@ class CommercialStrategy(BaseStrategy):
         self.offers.post(offer, market)
 
     def _offer_balancing_energy(self, market):
-        if self.owner.name not in DeviceRegistry.REGISTRY:
+        if not self.is_eligible_for_balancing_market:
             return
 
         # The second tuple member in the device registry is the balancing supply rate

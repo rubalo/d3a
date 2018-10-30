@@ -8,7 +8,7 @@ from d3a.models.strategy.load_hours_fb import LoadHoursStrategy
 from d3a.models.appliance.pv import PVAppliance
 from d3a.models.strategy.pv import PVStrategy
 from d3a.models.strategy.predefined_load import DefinedLoadStrategy
-from d3a.models.strategy.predefined_pv import d3a_path
+from d3a.util import d3a_path
 import os
 
 
@@ -25,7 +25,7 @@ def get_setup(config):
                                                              'resources', 'LOAD_DATA_1.csv'),
                              max_energy_rate=35),
                          appliance=SwitchableAppliance()),
-                    Area('H1 Storage1', strategy=StorageStrategy(initial_capacity=0.4),
+                    Area('H1 Storage1', strategy=StorageStrategy(initial_capacity_kWh=0.4),
                          appliance=SwitchableAppliance()),
 
                 ]

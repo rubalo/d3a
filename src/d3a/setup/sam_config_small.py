@@ -5,7 +5,7 @@ from d3a.models.strategy.storage import StorageStrategy
 from d3a.models.appliance.pv import PVAppliance
 from d3a.models.strategy.pv import PVStrategy
 from d3a.models.strategy.predefined_load import DefinedLoadStrategy
-from d3a.models.strategy.predefined_pv import d3a_path
+from d3a.util import d3a_path
 import os
 
 
@@ -28,10 +28,9 @@ def get_setup(config):
                                                              'SAM_MF2_Summer.csv'),
                              max_energy_rate=35),
                          appliance=SwitchableAppliance()),
-                    Area('H1 Storage1', strategy=StorageStrategy(battery_capacity=i_c,
-                                                                 max_abs_battery_power=i_c,
-                                                                 initial_capacity=i_c_f *
-                                                                 i_c),
+                    Area('H1 Storage1', strategy=StorageStrategy(battery_capacity_kWh=i_c,
+                                                                 max_abs_battery_power_kW=i_c,
+                                                                 initial_capacity_kWh=i_c_f * i_c),
                          appliance=SwitchableAppliance()),
                 ]
             ),
@@ -47,10 +46,9 @@ def get_setup(config):
                                                              'SAM_MF2_Summer.csv'),
                              max_energy_rate=35),
                          appliance=SwitchableAppliance()),
-                    Area('H2 Storage1', strategy=StorageStrategy(battery_capacity=i_c,
-                                                                 max_abs_battery_power=i_c,
-                                                                 initial_capacity=i_c_f *
-                                                                 i_c),
+                    Area('H2 Storage1', strategy=StorageStrategy(battery_capacity_kWh=i_c,
+                                                                 max_abs_battery_power_kW=i_c,
+                                                                 initial_capacity_kWh=i_c_f * i_c),
                          appliance=SwitchableAppliance()),
                 ]
             ),
@@ -64,10 +62,9 @@ def get_setup(config):
                                                              'SAM_MF2_Summer.csv'),
                              max_energy_rate=35),
                          appliance=SwitchableAppliance()),
-                    Area('H3 Storage1', strategy=StorageStrategy(battery_capacity=i_c,
-                                                                 max_abs_battery_power=i_c,
-                                                                 initial_capacity=i_c_f *
-                                                                 i_c),
+                    Area('H3 Storage1', strategy=StorageStrategy(battery_capacity_kWh=i_c,
+                                                                 max_abs_battery_power_kW=i_c,
+                                                                 initial_capacity_kWh=i_c_f * i_c),
                          appliance=SwitchableAppliance()),
                 ]
             ),
@@ -81,10 +78,9 @@ def get_setup(config):
                                                              'SAM_MF2_Summer.csv'),
                              max_energy_rate=35),
                          appliance=SwitchableAppliance()),
-                    Area('H4 Storage1', strategy=StorageStrategy(battery_capacity=i_c,
-                                                                 max_abs_battery_power=i_c,
-                                                                 initial_capacity=i_c_f *
-                                                                 i_c),
+                    Area('H4 Storage1', strategy=StorageStrategy(battery_capacity_kWh=i_c,
+                                                                 max_abs_battery_power_kW=i_c,
+                                                                 initial_capacity_kWh=i_c_f * i_c),
                          appliance=SwitchableAppliance()),
                 ]
             ),

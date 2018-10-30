@@ -11,7 +11,6 @@ from slugify import slugify
 from d3a import TIME_ZONE
 from d3a.models.market import Trade, BalancingTrade
 from d3a.models.strategy.fridge import FridgeStrategy
-from d3a.models.strategy.greedy_night_storage import NightStorageStrategy
 from d3a.models.strategy.load_hours_fb import LoadHoursStrategy, CellTowerLoadHoursStrategy
 from d3a.models.strategy.predefined_load import DefinedLoadStrategy
 from d3a.models.strategy.pv import PVStrategy
@@ -129,16 +128,16 @@ class ExportAndPlot:
                 writer = csv.writer(csv_file)
                 writer.writerow(labels)
                 out_dict = dict((key, {}) for key in out_keys)
-                for slot, market in past_markets.items():
+                for market in past_markets:
                     for trade in market.trades:
-                        row = (slot,) + trade._to_csv()
+                        row = (market.time_slot,) + trade._to_csv()
                         writer.writerow(row)
                         for ii, ks in enumerate(out_keys):
                             node = slugify(row[out_keys_ids[ii]], to_lower=True)
                             if node not in out_dict[ks]:
                                 out_dict[ks][node] = dict(
-                                    (key, 0) for key in area.past_markets.keys())
-                            out_dict[ks][node][slot] += row[4]
+                                    (m.time_slot, 0) for m in area.past_markets)
+                            out_dict[ks][node][market.time_slot] += row[4]
         except OSError:
             _log.exception("Could not export area trades")
 
@@ -155,7 +154,7 @@ class ExportAndPlot:
         """
         labels = ("slot", "rate [ct./kWh]", "energy [kWh]", "seller")
         for i, child in enumerate(area.children):
-            for slot, market in area.past_markets.items():
+            for market in area.past_markets:
                 for trade in market.trades:
                     buyer_slug = slugify(trade.buyer, to_lower=True)
                     seller_slug = slugify(trade.seller, to_lower=True)
@@ -164,7 +163,7 @@ class ExportAndPlot:
                     if seller_slug not in self.seller_trades:
                         self.seller_trades[seller_slug] = dict((key, []) for key in labels)
                     else:
-                        values = (slot, ) + \
+                        values = (market.time_slot, ) + \
                                  (round(trade.offer.price/trade.offer.energy, 4),
                                   (trade.offer.energy * -1),) + \
                                  (slugify(trade.seller, to_lower=True),)
@@ -244,15 +243,15 @@ class ExportAndPlot:
         key = 'energy'
         title = 'Energy Trade Profile of {}'.format(market_name)
         data.extend(self._plot_energy_graph(self.trades, market_name, "sold_energy_lists",
-                                            "-seller", key))
+                                            "-seller", key, ENERGY_SELLER_SIGN_PLOTS))
         data.extend(self._plot_energy_graph(self.trades, market_name, "bought_energy_lists",
-                                            "-buyer", key))
+                                            "-buyer", key, ENERGY_BUYER_SIGN_PLOTS))
         data.extend(self._plot_energy_graph(self.balancing_trades, market_name,
                                             "sold_energy_lists",
-                                            "-balancing-seller", key))
+                                            "-balancing-seller", key, ENERGY_SELLER_SIGN_PLOTS))
         data.extend(self._plot_energy_graph(self.balancing_trades, market_name,
                                             "bought_energy_lists",
-                                            "-balancing-buyer", key))
+                                            "-balancing-buyer", key, ENERGY_BUYER_SIGN_PLOTS))
         if len(data) == 0:
             return
         if all([len(da.y) == 0 for da in data]):
@@ -264,12 +263,12 @@ class ExportAndPlot:
                                    'energy_profile_{}.html'.format(market_name))
         BarGraph.plot_bar_graph(barmode, title, xtitle, ytitle, data, output_file)
 
-    def _plot_energy_graph(self, trades, market_name, agent, agent_label, key):
+    def _plot_energy_graph(self, trades, market_name, agent, agent_label, key, scale_value):
         internal_data = []
         for trader in trades[market_name][agent].keys():
 
             graph_obj = BarGraph(trades[market_name][agent][trader], key)
-            graph_obj.graph_value(scale_value=ENERGY_SELLER_SIGN_PLOTS)
+            graph_obj.graph_value(scale_value=scale_value)
             data_obj = go.Bar(x=list(graph_obj.umHours.keys()),
                               y=list(graph_obj.umHours.values()),
                               name=trader + agent_label)
@@ -422,8 +421,7 @@ class ExportUpperLevelData(ExportData):
                 'total trade volume [EUR]']
 
     def rows(self):
-        markets = self.area.past_markets
-        return [self._row(slot, markets[slot]) for slot in markets]
+        return [self._row(m.time_slot, m) for m in self.area.past_markets]
 
     def _row(self, slot, market):
         return [slot,
@@ -445,8 +443,7 @@ class ExportBalancingData:
                 'avg demand balancing trade rate [ct./kWh]']
 
     def rows(self):
-        markets = self.area.past_balancing_markets
-        return [self._row(slot, markets[slot]) for slot in markets]
+        return [self._row(m.time_slot, m) for m in self.area.past_balancing_markets]
 
     def _row(self, slot, market):
         return [slot,
@@ -467,8 +464,7 @@ class ExportLeafData(ExportData):
         if isinstance(self.area.strategy, FridgeStrategy):
             return ['temperature [°C]']
         elif isinstance(self.area.strategy, StorageStrategy):
-            return ['bought [kWh]', 'sold [kWh]', 'energy balance [kWh]', 'offered [kWh]',
-                    'used [kWh]', 'charge [%]', 'stored [kWh]']
+            return ['bought [kWh]', 'sold [kWh]', 'charge [kWh]', 'offered [kWh]', 'charge [%]']
         elif isinstance(self.area.strategy, LoadHoursStrategy):
             return ['desired energy [kWh]', 'deficit [kWh]']
         elif isinstance(self.area.strategy, PVStrategy):
@@ -476,8 +472,7 @@ class ExportLeafData(ExportData):
         return []
 
     def rows(self):
-        markets = self.area.parent.past_markets
-        return [self._row(slot, markets[slot]) for slot in markets]
+        return [self._row(m.time_slot, m) for m in self.area.parent.past_markets]
 
     def _traded(self, market):
         return market.traded_energy[self.area.name]
@@ -490,17 +485,13 @@ class ExportLeafData(ExportData):
     def _specific_row(self, slot, market):
         if isinstance(self.area.strategy, FridgeStrategy):
             return [self.area.strategy.temp_history[slot]]
-        elif isinstance(self.area.strategy, (StorageStrategy, NightStorageStrategy)):
+        elif isinstance(self.area.strategy, (StorageStrategy)):
             s = self.area.strategy.state
-            charge = s.charge_history[slot]
-            stored = '-' if charge == '-' else 0.01 * charge * s.capacity
             return [market.bought_energy(self.area.name),
                     market.sold_energy(self.area.name),
                     s.charge_history_kWh[slot],
                     s.offered_history[slot],
-                    s.used_history[slot],
-                    charge,
-                    stored]
+                    s.charge_history[slot]]
         elif isinstance(self.area.strategy, (LoadHoursStrategy, DefinedLoadStrategy,
                                              DefinedLoadStrategy, CellTowerLoadHoursStrategy)):
             desired = self.area.strategy.state.desired_energy_Wh[slot] / 1000
@@ -539,7 +530,7 @@ class BarGraph:
     def modify_time_axis(data: dict, title: str):
         """
         Changes timezone of pendulum x-values to 'UTC' and determines the list of days
-        in order to return the xrange for the plot
+        in order to return the time_range for the plot
         """
         day_set = set()
         for di in range(len(data)):
@@ -560,7 +551,11 @@ class BarGraph:
 
     @classmethod
     def plot_bar_graph(cls, barmode: str, title: str, xtitle: str, ytitle: str, data, iname: str):
-        xrange, data = cls.modify_time_axis(data, title)
+        try:
+            time_range, data = cls.modify_time_axis(data, title)
+        except ValueError:
+            return
+
         layout = go.Layout(
             barmode=barmode,
             title=title,
@@ -569,7 +564,7 @@ class BarGraph:
             ),
             xaxis=dict(
                 title=xtitle,
-                range=xrange
+                range=time_range
             ),
             font=dict(
                 size=16

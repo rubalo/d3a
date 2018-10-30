@@ -13,12 +13,13 @@ from hypothesis.stateful import Bundle, RuleBasedStateMachine, precondition, rul
 from d3a.exceptions import InvalidOffer, MarketReadOnlyException, OfferNotFoundException, \
     InvalidTrade, InvalidBalancingTradeException, InvalidBid, BidNotFound, DeviceNotInRegistryError
 from d3a.models.market import Market, BalancingMarket
+from d3a.models.strategy.const import ConstSettings
 
 from d3a.device_registry import DeviceRegistry
-DeviceRegistry.REGISTRY = {
-    "A": {"balancing rates": (23, 25)},
-    "someone": {"balancing rates": (23, 25)},
-    "seller": {"balancing rates": (23, 25)},
+device_registry_dict = {
+    "A": {"balancing rates": (33, 35)},
+    "someone": {"balancing rates": (33, 35)},
+    "seller": {"balancing rates": (33, 35)},
 }
 
 
@@ -28,6 +29,8 @@ class FakeArea:
         self.current_tick = 10
         self.bc = False
         self.now = DateTime.now()
+        DeviceRegistry.REGISTRY = device_registry_dict
+        ConstSettings.BalancingSettings.ENABLE_BALANCING_MARKET = True
 
 
 @pytest.yield_fixture
@@ -295,11 +298,11 @@ def test_market_accept_bid_emits_bid_traded_and_bid_deleted_event(market: Market
     assert called.calls[0][0] == (repr(MarketEvent.BID_TRADED), )
     assert called.calls[1][0] == (repr(MarketEvent.BID_DELETED), )
     assert called.calls[0][1] == {
-        'market': repr(market),
+        'market_id': repr(market.id),
         'bid_trade': repr(trade),
     }
     assert called.calls[1][1] == {
-        'market': repr(market),
+        'market_id': repr(market.id),
         'bid': repr(bid),
     }
 
@@ -312,7 +315,7 @@ def test_market_accept_bid_does_not_emit_bid_deleted_on_partial_bid(market: Mark
     assert len(called.calls) == 1
     assert called.calls[0][0] == (repr(MarketEvent.BID_TRADED), )
     assert called.calls[0][1] == {
-        'market': repr(market),
+        'market_id': repr(market.id),
         'bid_trade': repr(trade),
     }
 
@@ -452,7 +455,7 @@ def test_market_listeners_offer(market, offer, add_listener, event, called):
     e_offer = getattr(market, offer)(10, 20, 'A')
     assert len(called.calls) == 1
     assert called.calls[0][0] == (repr(event), )
-    assert called.calls[0][1] == {'offer': repr(e_offer), 'market': repr(market)}
+    assert called.calls[0][1] == {'offer': repr(e_offer), 'market_id': repr(market.id)}
 
 
 @pytest.mark.parametrize("market, offer, accept_offer, add_listener, event", [
@@ -467,7 +470,7 @@ def test_market_listeners_offer_changed(market, offer, accept_offer, add_listene
     assert len(called.calls) == 3
     assert called.calls[1][0] == (repr(event), )
     call_kwargs = called.calls[1][1]
-    call_kwargs.pop('market', None)
+    call_kwargs.pop('market_id', None)
     assert call_kwargs == {
         'existing_offer': repr(e_offer),
         'new_offer': repr(list(market.offers.values())[0])
@@ -486,7 +489,7 @@ def test_market_listeners_offer_deleted(market, offer, delete_offer, add_listene
 
     assert len(called.calls) == 2
     assert called.calls[1][0] == (repr(event), )
-    assert called.calls[1][1] == {'offer': repr(e_offer), 'market': repr(market)}
+    assert called.calls[1][1] == {'offer': repr(e_offer), 'market_id': repr(market.id)}
 
 
 @pytest.mark.parametrize(

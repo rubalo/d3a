@@ -9,7 +9,7 @@ from behave import given, when, then
 from d3a.models.config import SimulationConfig
 from d3a.models.strategy.read_user_profile import read_arbitrary_profile, _readCSV
 from d3a.simulation import Simulation
-from d3a.models.strategy.predefined_pv import d3a_path
+from d3a.util import d3a_path
 from d3a import PENDULUM_TIME_FORMAT
 from d3a.models.strategy.const import ConstSettings
 from d3a.export_unmatched_loads import export_unmatched_loads
@@ -84,8 +84,7 @@ def pv_profile_scenario(context):
             {
                 "name": "Commercial Energy Producer",
                 "type": "CommercialProducer",
-                "energy_price": 15.5,
-                "energy_range_wh": [40, 120]
+                "energy_rate": 15.5
             },
             {
                 "name": "House 1",
@@ -109,8 +108,8 @@ def pv_profile_scenario(context):
                     {
                         "name": "H2 Storage",
                         "type": "Storage",
-                        "capacity": 5,
-                        "initial_charge": 40
+                        "initial_capacity_kWh": 5,
+                        "battery_capacity_kWh": 12.5,
                     },
                     {
                         "name": "H2 Fridge 1",
@@ -138,8 +137,7 @@ def load_profile_scenario(context):
         {
           "name": "Commercial Energy Producer",
           "type": "CommercialProducer",
-          "energy_price": 15.5,
-          "energy_range_wh": [40, 120]
+          "energy_rate": 15.5
         },
         {
           "name": "House 1",
@@ -163,8 +161,8 @@ def load_profile_scenario(context):
             {
               "name": "H2 Storage",
               "type": "Storage",
-              "capacity": 5,
-              "initial_charge": 40
+              "initial_capacity_kWh": 5,
+              "battery_capacity_kWh": 12.5,
             },
             {
               "name": "H2 Fridge 1",
@@ -283,9 +281,10 @@ def run_d3a_with_settings_file(context):
     context.export_path = os.path.join(context.simdir, "default")
     os.makedirs(context.export_path, exist_ok=True)
     os.system("d3a -l FATAL run -g {settings_file} --export --export-path={export_path} "
-              "--exit-on-finish".format(export_path=context.export_path,
-                                        settings_file=os.path.join(
-                                            d3a_path, "setup", "d3a-settings.json")))
+              "--setup default_2a --exit-on-finish".format(export_path=context.export_path,
+                                                           settings_file=os.path.join(
+                                                               d3a_path, "setup",
+                                                               "d3a-settings.json")))
 
 
 @then('we test the export functionality of {scenario}')
@@ -387,16 +386,16 @@ def method_called(context, method):
       '{slot_length}, {tick_length}]')
 def run_sim_without_iaa_fee(context, scenario, total_duration, slot_length, tick_length):
     run_sim(context, scenario, total_duration, slot_length, tick_length,
-            ConstSettings.INTER_AREA_AGENT_FEE_PERCENTAGE, market_count=1)
+            ConstSettings.IAASettings.FEE_PERCENTAGE, market_count=1)
 
 
 @when("we run the simulation with setup file {scenario} with two different market_counts")
 def run_sim_market_count(context, scenario):
-    run_sim(context, scenario, 24, 60, 60, ConstSettings.INTER_AREA_AGENT_FEE_PERCENTAGE,
+    run_sim(context, scenario, 24, 60, 60, ConstSettings.IAASettings.FEE_PERCENTAGE,
             market_count=1)
     context.simulation_1 = context.simulation
 
-    run_sim(context, scenario, 24, 60, 60, ConstSettings.INTER_AREA_AGENT_FEE_PERCENTAGE,
+    run_sim(context, scenario, 24, 60, 60, ConstSettings.IAASettings.FEE_PERCENTAGE,
             market_count=4)
     context.simulation_4 = context.simulation
 
@@ -553,7 +552,7 @@ def test_finite_plant_energy_rate(context, plant_name):
     finite = list(filter(lambda x: x.name == plant_name,
                          grid.children))[0]
     trades_sold = []
-    for slot, market in grid.past_markets.items():
+    for market in grid.past_markets:
         for trade in market.trades:
             assert trade.buyer is not finite.name
             if trade.seller == finite.name:
@@ -569,7 +568,7 @@ def test_infinite_plant_energy_rate(context, plant_name):
     finite = list(filter(lambda x: x.name == plant_name,
                          grid.children))[0]
     trades_sold = []
-    for slot, market in grid.past_markets.items():
+    for market in grid.past_markets:
         for trade in market.trades:
             assert trade.buyer is not finite.name
             if trade.seller == finite.name:
@@ -587,7 +586,7 @@ def test_finite_plant_max_power(context, plant_name):
     finite = list(filter(lambda x: x.name == plant_name,
                          grid.children))[0]
 
-    for slot, market in grid.past_markets.items():
+    for market in grid.past_markets:
         trades_sold = []
         for trade in market.trades:
             assert trade.buyer is not finite.name
@@ -603,7 +602,7 @@ def test_pv_initial_pv_rate_option(context):
     grid = context.simulation.area
     house = list(filter(lambda x: x.name == "House", grid.children))[0]
 
-    for slot, market in house.past_markets.items():
+    for market in house.past_markets:
         for trade in market.trades:
             assert isclose(trade.offer.price / trade.offer.energy,
                            grid.config.market_maker_rate[market.time_slot_str])
@@ -613,7 +612,7 @@ def test_pv_initial_pv_rate_option(context):
 def test_sim_market_count(context):
     grid_1 = context.simulation_1.area
     grid_4 = context.simulation_4.area
-    for slot, market_1 in grid_1.past_markets.items():
-        market_4 = grid_4.past_markets[slot]
+    for market_1 in grid_1.past_markets:
+        market_4 = grid_4.get_past_market(market_1.time_slot)
         for area in market_1.traded_energy.keys():
             assert isclose(market_1.traded_energy[area], market_4.traded_energy[area])

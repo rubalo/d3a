@@ -27,7 +27,6 @@ BC_EVENT_MAP = {
 
 log = getLogger(__name__)
 
-
 OFFER_PRICE_THRESHOLD = 0.00001
 
 
@@ -40,11 +39,11 @@ class Offer:
         self.seller = seller
 
     def __repr__(self):
-        return "<Offer('{s.id!s:.6s}', '{s.energy} kWh@{s.price}', '{s.seller} {rate}'>"\
+        return "<Offer('{s.id!s:.6s}', '{s.energy} kWh@{s.price}', '{s.seller} {rate}'>" \
             .format(s=self, rate=self.price / self.energy)
 
     def __str__(self):
-        return "{{{s.id!s:.6s}}} [{s.seller}]: {s.energy} kWh @ {s.price} @ {rate}"\
+        return "{{{s.id!s:.6s}}} [{s.seller}]: {s.energy} kWh @ {s.price} @ {rate}" \
             .format(s=self, rate=self.price / self.energy)
 
 
@@ -94,12 +93,10 @@ class Trade(namedtuple('Trade', ('id', 'time', 'offer', 'seller',
 
 
 class Market:
-    _market_id_counter = 1
 
     def __init__(self, time_slot=None, area=None, notification_listener=None, readonly=False):
-        self.market_id = Market._market_id_counter
-        Market._market_id_counter += 1
         self.area = area
+        self.id = str(uuid.uuid4())
         self.time_slot = time_slot
         self.time_slot_str = time_slot.strftime(TIME_FORMAT) \
             if self.time_slot is not None \
@@ -164,10 +161,10 @@ class Market:
     def _notify_listeners(self, event, **kwargs):
         # Deliver notifications in random order to ensure fairness
         for listener in sorted(self.notification_listeners, key=lambda l: random.random()):
-            listener(event, **kwargs)
+            listener(event, market_id=self.id, **kwargs)
 
     def offer(self, price: float, energy: float, seller: str,
-              balancing_agent: bool=False) -> Offer:
+              balancing_agent: bool = False) -> Offer:
         assert balancing_agent is False
         if self.readonly:
             raise MarketReadOnlyException()
@@ -183,10 +180,10 @@ class Market:
         self._sorted_offers = sorted(self.offers.values(), key=lambda o: o.price / o.energy)
         log.info(f"[OFFER][NEW][{self.time_slot_str}] {offer}")
         self._update_min_max_avg_offer_prices()
-        self._notify_listeners(MarketEvent.OFFER, market_id=self.market_id, offer=offer)
+        self._notify_listeners(MarketEvent.OFFER, offer=offer)
         return offer
 
-    def bid(self, price: float, energy: float, buyer: str, seller: str, bid_id: str=None) -> Bid:
+    def bid(self, price: float, energy: float, buyer: str, seller: str, bid_id: str = None) -> Bid:
         if energy <= 0:
             raise InvalidBid()
         bid = Bid(str(uuid.uuid4()) if bid_id is None else bid_id,
@@ -214,7 +211,7 @@ class Market:
         log.info(f"[OFFER][DEL][{self.time_slot_str}] {offer}")
 
         # TODO: Once we add event-driven blockchain, this should be asynchronous
-        self._notify_listeners(MarketEvent.OFFER_DELETED, market_id=self.market_id, offer=offer)
+        self._notify_listeners(MarketEvent.OFFER_DELETED, offer=offer)
 
     def delete_bid(self, bid_or_id: Union[str, Bid]):
         if isinstance(bid_or_id, Bid):
@@ -314,7 +311,6 @@ class Market:
                                                      key=lambda o: o.price / o.energy)
                         self._notify_listeners(
                             MarketEvent.OFFER_CHANGED,
-                            market_id=self.market_id,
                             existing_offer=original_offer,
                             new_offer=residual_offer
                         )
@@ -334,21 +330,20 @@ class Market:
                                                        original_offer, residual_offer)
         trade = Trade(trade_id, time, offer, offer.seller, buyer,
                       residual_offer, price_drop, already_tracked=False)
+
         if self.area and self.area.bc:
             self._trades_by_id[trade_id] = trade
 
         self._update_stats_after_trade(trade, offer, buyer)
-
-        trade = Trade(trade_id, time, offer, offer.seller, buyer, residual_offer, price_drop)
         log.warning(f"[TRADE][{self.time_slot_str}] {trade}")
 
         # FIXME: Needs to be triggered by blockchain event
         # TODO: Same as above, should be modified when event-driven blockchain is introduced
-        offer._traded(trade, self)
+        # offer._traded(trade, self)
 
         # TODO: Use non-blockchain non-event-driven version for now for both blockchain and
         # normal runs.
-        self._notify_listeners(MarketEvent.TRADE, market_id=self.market_id, trade=trade)
+        self._notify_listeners(MarketEvent.TRADE, trade=trade)
         return trade
 
     def _handle_blockchain_trade_event(self, offer, buyer, original_offer, residual_offer):
@@ -510,7 +505,7 @@ class Market:
 class BalancingOffer(Offer):
 
     def __repr__(self):
-        return "<BalancingOffer('{s.id!s:.6s}', '{s.energy} kWh@{s.price}', '{s.seller} {rate}'>"\
+        return "<BalancingOffer('{s.id!s:.6s}', '{s.energy} kWh@{s.price}', '{s.seller} {rate}'>" \
             .format(s=self, rate=self.price / self.energy)
 
     def __str__(self):
@@ -555,11 +550,11 @@ class BalancingMarket(Market):
 
         Market.__init__(self, time_slot, area, notification_listener, readonly)
 
-    def offer(self, price: float, energy: float, seller: str, balancing_agent: bool=False):
+    def offer(self, price: float, energy: float, seller: str, balancing_agent: bool = False):
         return self.balancing_offer(price, energy, seller, balancing_agent)
 
     def balancing_offer(self, price: float, energy: float,
-                        seller: str, balancing_agent: bool=False) -> BalancingOffer:
+                        seller: str, balancing_agent: bool = False) -> BalancingOffer:
         if seller not in DeviceRegistry.REGISTRY.keys() and not balancing_agent:
             raise DeviceNotInRegistryError(f"Device {seller} "
                                            f"not in registry ({DeviceRegistry.REGISTRY}).")
@@ -576,8 +571,8 @@ class BalancingMarket(Market):
         return offer
 
     def accept_offer(self, offer_or_id: Union[str, BalancingOffer], buyer: str, *,
-                     energy: int = None, time: DateTime = None, price_drop:
-                     bool = False) -> BalancingTrade:
+                     energy: int = None, time: DateTime = None,
+                     price_drop: bool = False) -> BalancingTrade:
         if self.readonly:
             raise MarketReadOnlyException()
         if isinstance(offer_or_id, Offer):

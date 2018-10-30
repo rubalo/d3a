@@ -9,7 +9,7 @@ from d3a.models.strategy.const import ConstSettings
 class FridgeStrategy(BaseStrategy):
     parameters = ('risk',)
 
-    def __init__(self, risk=ConstSettings.DEFAULT_RISK):
+    def __init__(self, risk=ConstSettings.GeneralSettings.DEFAULT_RISK):
         if not 0 <= risk <= 100:
             raise ValueError("Risk is a percentage value, should be between 0 and 100.")
         super().__init__()
@@ -27,7 +27,7 @@ class FridgeStrategy(BaseStrategy):
         return self.state.temperature
 
     def event_activate(self):
-        self.open_spot_markets = list(self.area.markets.values())
+        self.open_spot_markets = self.area.all_markets
 
     def event_tick(self, *, area_id):
         self.state.tick(self.area)
@@ -39,10 +39,10 @@ class FridgeStrategy(BaseStrategy):
             return
 
         # Assuming a linear correlation between accepted price and risk
-        median_risk = ConstSettings.MAX_RISK / 2
+        median_risk = ConstSettings.GeneralSettings.MAX_RISK / 2
         # The threshold buying price depends on historical market data
-        min_historical_price, max_historical_price = self.area.historical_min_max_price
-        average_market_price = self.area.historical_avg_rate
+        min_historical_price, max_historical_price = self.area.stats.historical_min_max_price
+        average_market_price = self.area.stats.historical_avg_rate
 
         # deviation_from_average is the value that determines the deviation (in percentage of
         # the average market price)
@@ -58,7 +58,7 @@ class FridgeStrategy(BaseStrategy):
         risk_price_slope = (
             (
                 average_market_price - accepted_price_at_highest_risk
-            ) / (ConstSettings.MAX_RISK - median_risk)
+            ) / (ConstSettings.GeneralSettings.MAX_RISK - median_risk)
         )
 
         # risk_dependency_of_threshold_price calculates a threshold price
@@ -67,7 +67,8 @@ class FridgeStrategy(BaseStrategy):
         # This is of course the point of highest possible risk.
         # Then we add the slope times the risk (lower risk needs to result in a higher price)
         risk_dependency_of_threshold_price = (accepted_price_at_highest_risk +
-                                              ((ConstSettings.MAX_RISK - self.risk) / 100) *
+                                              ((ConstSettings.GeneralSettings.MAX_RISK -
+                                                self.risk) / 100) *
                                               risk_price_slope
                                               )
 
@@ -101,10 +102,10 @@ class FridgeStrategy(BaseStrategy):
                 #  of the temperature (see event_market_cycle) as well
                 if self.state.temperature <= self.state.min_temperature + 0.05:
                     return
-                if offer.energy * 1000 < ConstSettings.FRIDGE_MIN_NEEDED_ENERGY:
+                if offer.energy * 1000 < ConstSettings.FridgeSettings.MIN_NEEDED_ENERGY:
                     continue
                 cooling_temperature = (((offer.energy * 1000) /
-                                        ConstSettings.FRIDGE_MIN_NEEDED_ENERGY)
+                                        ConstSettings.FridgeSettings.MIN_NEEDED_ENERGY)
                                        * 0.05 * 2)
                 if (
                             ((offer.price / offer.energy) <= threshold_price
@@ -113,8 +114,8 @@ class FridgeStrategy(BaseStrategy):
                 ):
                     if self.state.temperature - cooling_temperature < self.state.min_temperature:
                         cooling_temperature = self.state.temperature - self.state.min_temperature
-                        partial = cooling_temperature * ConstSettings.FRIDGE_MIN_NEEDED_ENERGY / (
-                                .05 * 2 * 1000)
+                        partial = cooling_temperature * \
+                            ConstSettings.FridgeSettings.MIN_NEEDED_ENERGY / (.05 * 2 * 1000)
                     else:
                         partial = None
                     try:
@@ -138,7 +139,8 @@ class FridgeStrategy(BaseStrategy):
                                       self.state.temperature)
                     self.log.info("cheapest price is is %s", cheapest_offer.price)
             except IndexError:
-                self.log.critical("Crap no offers available")
+                pass
+                # self.log.critical("Crap no offers available")
 
     def event_market_cycle(self):
         self.log.info("Temperature: %.2f", self.state.temperature)
@@ -146,4 +148,4 @@ class FridgeStrategy(BaseStrategy):
         # (AKA the most recent of the past markets) don't update the fridge state
         if self.area.current_market is not None:
             self.state.market_cycle(self.area)
-        self.open_spot_markets = list(self.area.markets.values())
+        self.open_spot_markets = self.area.all_markets
