@@ -31,10 +31,14 @@ from d3a.d3a_core.device_registry import DeviceRegistry
 from d3a.constants import FLOATING_POINT_TOLERANCE
 from d3a.d3a_core.util import add_or_create_key, subtract_or_create_key
 from d3a.d3a_core.redis_communication import REDIS_URL
+from d3a.models.market.market_structures import trade_bid_info_from_JSON_string, \
+    offer_from_JSON_string
+from d3a_interface.constants_limits import ConstSettings
 
 log = getLogger(__name__)
 
 
+# TODO: this will live somewhere else after Spyros' PR
 class RedisMarketCommunicator:
     def __init__(self):
         self.redis_db = StrictRedis.from_url(REDIS_URL)
@@ -57,6 +61,65 @@ class RedisMarketCommunicator:
 
     def unsub_from_market_event(self, channel):
         self.pubsub.unsubscribe(channel)
+
+
+class MarketRedisApi:
+    def __init__(self, market):
+        self.market = market
+        self.redis = RedisMarketCommunicator()
+        self.event_channel_callback_mapping = {
+            f"{market.id}/OFFER": self._offer,
+            f"{market.id}/DELETE_OFFER": self._delete_offer,
+            f"{market.id}/ACCEPT_OFFER": self._accept_offer
+        }
+        for channel, callback in self.event_channel_callback_mapping.items():
+            self.redis.sub_to_market_event(channel, callback)
+
+    @staticmethod
+    def _parse_payload(payload):
+        data_dict = json.loads(payload["data"])
+        if isinstance(data_dict, str):
+            data_dict = json.loads(data_dict)
+        if "trade_bid_info" in data_dict and data_dict["trade_bid_info"] is not None:
+            data_dict["trade_bid_info"] = \
+                trade_bid_info_from_JSON_string(data_dict["trade_bid_info"])
+        if "offer_or_id" in data_dict and data_dict["offer_or_id"] is not None:
+            if isinstance(data_dict["offer_or_id"], str):
+                data_dict["offer_or_id"] = offer_from_JSON_string(data_dict["offer_or_id"])
+        if "offer" in data_dict and data_dict["offer"] is not None:
+            if isinstance(data_dict["offer_or_id"], str):
+                data_dict["offer_or_id"] = offer_from_JSON_string(data_dict["offer_or_id"])
+
+        return data_dict
+
+    def _accept_offer(self, payload):
+        try:
+            trade = self.market.accept_offer(**self._parse_payload(payload))
+            self.redis.publish(f"{self.market.id}/ACCEPT_OFFER/RESPONSE",
+                               {"status": "ready", "trade": trade.to_JSON_string()})
+        except Exception as e:
+            self.redis.publish(f"{self.market.id}/ACCEPT_OFFER/RESPONSE",
+                               {"status": "error",  "exception": str(type(e)),
+                                "error_message": str(e)})
+
+    def _offer(self, payload):
+        try:
+            offer = self.market.offer(**self._parse_payload(payload))
+            self.redis.publish(f"{self.market.id}/OFFER/RESPONSE",
+                               {"status": "ready", "offer": offer.to_JSON_string()})
+        except Exception as e:
+            self.redis.publish(f"{self.market.id}/OFFER/RESPONSE",
+                               {"status": "error",  "exception": str(type(e)),
+                                "error_message": str(e)})
+
+    def _delete_offer(self, payload):
+        try:
+            self.market.delete_offer(**self._parse_payload(payload))
+            self.redis.publish(f"{self.market.id}/DELETE_OFFER/RESPONSE", {"status": "ready"})
+        except Exception as e:
+            self.redis.publish(f"{self.market.id}/DELETE_OFFER/RESPONSE",
+                               {"status": "error", "exception": str(type(e)),
+                                "error_message": str(e)})
 
 
 class Market:
@@ -93,6 +156,8 @@ class Market:
             self.notification_listeners.append(notification_listener)
 
         self.device_registry = DeviceRegistry.REGISTRY
+        if ConstSettings.GeneralSettings.EVENT_DISPATCHING_VIA_REDIS:
+            self.redis_api = MarketRedisApi(self)
 
     def add_listener(self, listener):
         self.notification_listeners.append(listener)
