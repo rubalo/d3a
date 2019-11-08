@@ -68,9 +68,9 @@ class MarketRedisApi:
         self.market = market
         self.redis = RedisMarketCommunicator()
         self.event_channel_callback_mapping = {
-            f"{market.id}/OFFER": self._offer,
-            f"{market.id}/DELETE_OFFER": self._delete_offer,
-            f"{market.id}/ACCEPT_OFFER": self._accept_offer
+            f"market/{market.id}/OFFER": self._offer,
+            f"market/{market.id}/DELETE_OFFER": self._delete_offer,
+            f"market/{market.id}/ACCEPT_OFFER": self._accept_offer
         }
         for channel, callback in self.event_channel_callback_mapping.items():
             self.redis.sub_to_market_event(channel, callback)

@@ -172,8 +172,8 @@ class BaseStrategy(TriggerMixin, EventMixin, AreaBehaviorBase):
 
     def _send_events_to_market(self, event_type, market_id, data, callback):
         # TODO: This could be moved to the RedisMarketCommunicator
-        response_channel = f"{market_id}/{event_type}/RESPONSE"
-        market_channel = f"{market_id}/{event_type}"
+        response_channel = f"market/{market_id}/{event_type}/RESPONSE"
+        market_channel = f"market/{market_id}/{event_type}"
 
         self.redis.sub_to_market_event(response_channel, callback)
         self.redis.publish(market_channel, data)
