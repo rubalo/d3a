@@ -30,9 +30,11 @@ class OneSidedAgent(InterAreaAgent):
                          lower_market=lower_market, min_offer_age=min_offer_age)
         self.name = make_iaa_name(owner)
 
-    def usable_offer(self, offer):
+    def usable_offer(self, offer, engine_to_exclude=None):
         """Prevent IAAEngines from trading their counterpart's offers"""
-        return all(offer.id not in engine.forwarded_offers.keys() for engine in self.engines)
+        return all(offer.id not in engine.forwarded_offers.keys()
+                   for engine in self.engines
+                   if engine is not engine_to_exclude)
 
     def _get_market_from_market_id(self, market_id):
         if self.lower_market.id == market_id:

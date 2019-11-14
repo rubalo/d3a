@@ -103,7 +103,7 @@ class IAAEngine:
                 # normally.
                 self.offer_age.pop(offer_id, None)
                 continue
-            if not self.owner.usable_offer(offer):
+            if not self.owner.usable_offer(offer, self):
                 # Forbidden offer (i.e. our counterpart's)
                 continue
 
@@ -233,7 +233,7 @@ class IAAEngine:
             # an offer in the source market was split - delete the corresponding offer
             # in the target market and forward the new residual offer
 
-            if not self.owner.usable_offer(existing_offer) or \
+            if not self.owner.usable_offer(existing_offer, self) or \
                     self.owner.name == existing_offer.seller:
                 return
 

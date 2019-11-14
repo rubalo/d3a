@@ -185,6 +185,15 @@ def iaa_grid_fee():
     return iaa
 
 
+def test_iaa_usable_offer(iaa):
+    offer_to_forward = Offer('testoffer', 1, 1, 'other')
+    iaa.engines[0].forwarded_offers = {'testoffer': offer_to_forward}
+    # By excluding engine that has forwarded the offer, usable_offer returns true
+    assert iaa.usable_offer(offer_to_forward, engine_to_exclude=iaa.engines[0]) is True
+    # If the offer is on the same engine that has forwarded it, mark it as not usable
+    assert iaa.usable_offer(offer_to_forward, engine_to_exclude=iaa.engines[1]) is False
+
+
 def test_iaa_forwards_offers(iaa):
     assert iaa.lower_market.offer_count == 2
     assert iaa.higher_market.offer_count == 1
@@ -489,7 +498,7 @@ def test_iaa_forwards_partial_bid_from_source_market(iaa_double_sided):
 
 def test_iaa_forwards_partial_offer_from_source_market(iaa2):
     full_offer = iaa2.lower_market.sorted_offers[0]
-    iaa2.usable_offer = lambda s: True
+    iaa2.usable_offer = lambda s, e: True
     residual_offer = Offer('residual', 2, 1.4, 'other')
     iaa2.event_offer_changed(market_id=iaa2.lower_market.id,
                              existing_offer=full_offer,
