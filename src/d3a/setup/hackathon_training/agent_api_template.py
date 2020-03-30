@@ -20,23 +20,26 @@ TIME_ZONE = "UTC"
 
 # DESIGNATE DEVICES AND MARKETS TO MANAGE
 market_names = ['community']
+market_names = ['Community hack']
 load_names = ['h1-load-s'] # e.g. ['h1-load-s', 'h2-load'], first load is 'master' strategy
+load_names = ['Load 1']
 pv_names = ['h1-pv-s']
-storage_names = ['h1-storage-s']
+pv_names = ['PV 1']
+storage_names = [] # ['h1-storage-s']
 
 # D3A WEB SETUP
 # This section to be used for running on live simulations on d3a.io. Ignore for now.
-RUN_ON_D3A_WEB = False # if False, runs to local simulation. If True, runs to D3A web
+RUN_ON_D3A_WEB = True # if False, runs to local simulation. If True, runs to D3A web
 # Set web username and password
 # Note, can also be done using export commands in terminal
 # export API_CLIENT_USERNAME=username
 # export API_CLIENT_PASSWORD=password
-os.environ["API_CLIENT_USERNAME"] = "email@email.com"
-os.environ["API_CLIENT_PASSWORD"] = "password here"
+os.environ["API_CLIENT_USERNAME"] = "colin@gridsingularity.com"
+os.environ["API_CLIENT_PASSWORD"] = "magrathea"
 # set collaboration information
-collab_id = "XXX-XXX"
-domain_name = 'TBD'
-websockets_domain_name = 'TBD'
+collab_id = "62547c90-e148-4099-9f4c-cf19762df8f9"
+domain_name = 'https://d3aweb-dev.gridsingularity.com'
+websockets_domain_name = 'wss://d3aweb-dev.gridsingularity.com/external-ws'
 
 ################################################
 # HELPER FUNCTIONS
@@ -109,13 +112,13 @@ class AutoDeviceStrategy(DeviceClient):
         print("Market", market_time)
         print('--------', '00%', '--------')
 
-        # request market stats
-        slots = []
-        times = [15, 30]  # sort most recent to oldest for later algo
-        for time in times:
-            slots.append(market_time.subtract(minutes=time).format(DATE_TIME_FORMAT))
-        for market in self.markets:
-            stats = market.list_market_stats(slots)
+        # # request market stats
+        # slots = []
+        # times = [15, 30]  # sort most recent to oldest for later algo
+        # for time in times:
+        #     slots.append(market_time.subtract(minutes=time).format(DATE_TIME_FORMAT))
+        # for market in self.markets:
+        #     stats = market.list_market_stats(slots)
 
         # load trading strategy setup
         for l in self.loads:
@@ -306,20 +309,21 @@ class AutoDeviceStrategy(DeviceClient):
 
 def register_list(device_flag, asset_list, collaboration_id=None,
                   domain=None, websockets_domain=None):
+
+    device_key_name = "device_id" if device_flag else "area_id"
     if RUN_ON_D3A_WEB:
         asset_list = [
             get_area_uuid_from_area_name_and_collaboration_id(collaboration_id, n, domain_name)
             for n in asset_list
         ]
-
+        print(asset_list)
         kwargs_list = [{
             "simulation_id": collaboration_id,
-            "device_id": a,
+            device_key_name: a,
             "domain_name": domain,
             "websockets_domain_name": websockets_domain
         } for a in asset_list]
     else:
-        device_key_name = "device_id" if device_flag else "area_id"
         kwargs_list = [{
             device_key_name: a
         } for a in asset_list]
@@ -346,9 +350,12 @@ if __name__ == '__main__':
 
     # register for markets to get information
     markets = register_list(device_flag=False, asset_list=market_names, **kwargs)
+    print(markets)
 
     # register for loads
+    print('here')
     loads = register_list(device_flag=True, asset_list=load_names, **kwargs)
+    print(loads)
     MASTER_NAME = loads[0].device_id
 
     # register for pvs

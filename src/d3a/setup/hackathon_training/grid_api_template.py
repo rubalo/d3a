@@ -19,21 +19,21 @@ TIME_ZONE = "UTC"
 ################################################
 
 # DESIGNATE DEVICES AND MARKETS TO MANAGE
-market_names = ['community']
+market_names = ['Community hack']
 
 # D3A WEB SETUP
 # This section to be used for running on live simulations on d3a.io. Ignore for now.
-RUN_ON_D3A_WEB = False # if False, runs to local simulation. If True, runs to D3A web
+RUN_ON_D3A_WEB = True # if False, runs to local simulation. If True, runs to D3A web
 # Set web username and password
 # Note, can also be done using export commands in terminal
 # export API_CLIENT_USERNAME=username
 # export API_CLIENT_PASSWORD=password
-os.environ["API_CLIENT_USERNAME"] = "email@email.com"
-os.environ["API_CLIENT_PASSWORD"] = "password here"
+os.environ["API_CLIENT_USERNAME"] = "colin@gridsingularity.com"
+os.environ["API_CLIENT_PASSWORD"] = "magrathea"
 # set collaboration information
-collab_id = "XXX-XXX"
-domain_name = 'TBD'
-websockets_domain_name = 'TBD'
+collab_id = "62547c90-e148-4099-9f4c-cf19762df8f9"
+domain_name = 'https://d3aweb-dev.gridsingularity.com'
+websockets_domain_name = 'wss://d3aweb-dev.gridsingularity.com/external-ws'
 
 if RUN_ON_D3A_WEB:
     MarketClient = RestMarketClient
@@ -120,7 +120,7 @@ class AutoMarketStrategy(MarketClient):
 ################################################
 
 
-def register_list(device_flag, asset_list, collaboration_id=None,
+def register_list(asset_list, collaboration_id=None,
                   domain=None, websockets_domain=None):
     if RUN_ON_D3A_WEB:
         asset_list = [
@@ -155,7 +155,7 @@ if __name__ == '__main__':
     }
 
     # register for markets to get information
-    markets = register_list(device_flag=False, asset_list=market_names, **kwargs)
+    markets = register_list(asset_list=market_names, **kwargs)
     MASTER_NAME = markets[0].area_id
 
     ################################################
