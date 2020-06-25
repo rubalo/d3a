@@ -1,4 +1,5 @@
 # flake8: noqa
+
 """
 Template file for a trading strategy through the d3a API client
 """
