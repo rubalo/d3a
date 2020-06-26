@@ -113,9 +113,11 @@ pv1 = RestDeviceClient(
     **device_args
 )
 
-load1.select_aggregator(aggr.aggregator_name)
-load2.select_aggregator(aggr.aggregator_name)
-pv1.select_aggregator(aggr.aggregator_name)
+print(aggr.aggregator_uuid)
+
+load1.select_aggregator(aggr.aggregator_uuid)
+load2.select_aggregator(aggr.aggregator_uuid)
+pv1.select_aggregator(aggr.aggregator_uuid)
 
 from time import sleep
 while not aggr.is_finished:
