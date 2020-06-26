@@ -17,7 +17,7 @@ os.environ["API_CLIENT_PASSWORD"] = "magrathea" # TODO set password
 
 # set simulation parameters
 RUN_ON_D3A_WEB = True # TODO set to true if joining collaboration through UI, false if running simulation locally
-simulation_id = 'eb861cd1-50bc-42c4-9020-228faa60ee3f' # TODO update simulation id with experiment id
+simulation_id = '245f0fb1-e7f4-47a8-9061-cefc02a63f9a' # TODO update simulation id with experiment id
 domain_name = 'https://d3aweb-dev.gridsingularity.com' # leave as is
 websocket_domain_name = 'wss://d3aweb-dev.gridsingularity.com/external-ws' # leave as is
 
@@ -256,7 +256,7 @@ def register_device_list(device_names, device_args):
         uuid = get_area_uuid_from_area_name_and_collaboration_id(device_args["simulation_id"], d, device_args["domain_name"])
         device_args['device_id'] = uuid
         device = DeviceClient(**device_args)
-        device.select_aggregator(aggr.aggregator_uuid)
+        device.select_aggregator(aggr.aggregator_name)
 
 
 register_device_list(load_names, device_args)
