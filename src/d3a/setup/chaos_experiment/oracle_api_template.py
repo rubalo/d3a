@@ -40,7 +40,7 @@ storage_names = ['Green Storage 1']
 
 # set trading strategy parameters
 market_maker_price = 30 # leave as is
-feed_in_tariff_price = 15 # leave as is
+feed_in_tariff_price = 11 # leave as is
 # set market parameters
 ticks = 10 # leave as is
 
