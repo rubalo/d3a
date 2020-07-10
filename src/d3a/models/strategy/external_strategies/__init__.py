@@ -100,7 +100,8 @@ class ExternalMixin:
 
     @property
     def is_aggregator_controlled(self):
-        return self.redis.aggregator.is_controlling_device(self.device.uuid)
+        return hasattr(self.redis, 'aggregator') and \
+               self.redis.aggregator.is_controlling_device(self.device.uuid)
 
     @property
     def should_use_default_strategy(self):
@@ -122,9 +123,11 @@ class ExternalMixin:
             raise ValueError("transaction_id not in payload or None")
 
     def _register(self, payload):
+        print(f"_register")
         self._connected = register_area(self.redis, self.channel_prefix, self.connected,
                                         self._get_transaction_id(payload),
                                         device_uuid=self.device.uuid)
+        print(f"_connected: {self._connected}")
 
     def _unregister(self, payload):
         self._connected = unregister_area(self.redis, self.channel_prefix, self.connected,
@@ -263,12 +266,12 @@ class ExternalMixin:
 
     def event_bid_traded(self, market_id, bid_trade):
         super().event_bid_traded(market_id=market_id, bid_trade=bid_trade)
-        if self.connected or self.redis.aggregator.is_controlling_device(self.device.uuid):
+        if not self.should_use_default_strategy:
             self._publish_trade_event(bid_trade, True)
 
     def event_trade(self, market_id, trade):
         super().event_trade(market_id=market_id, trade=trade)
-        if self.connected or self.redis.aggregator.is_controlling_device(self.device.uuid):
+        if not self.should_use_default_strategy:
             self._publish_trade_event(trade, False)
 
     def deactivate(self):

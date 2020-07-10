@@ -44,6 +44,10 @@ class StorageExternalMixin(ExternalMixin):
             f'{self.channel_prefix}/list_bids': self._list_bids,
             f'{self.channel_prefix}/device_info': self._device_info,
         })
+        message = self.redis.redis_db.get(f'{self.channel_prefix}/register_participant')
+        if message is not None:
+            self._register(json.loads(message))
+            self.redis.redis_db.delete(f'{self.channel_prefix}/register_participant')
 
     def _list_offers(self, payload):
         self._get_transaction_id(payload)
@@ -120,6 +124,7 @@ class StorageExternalMixin(ExternalMixin):
                  "transaction_id": arguments.get("transaction_id", None)})
 
     def _offer(self, payload):
+        print(f"_offer: {payload}")
         transaction_id = self._get_transaction_id(payload)
         offer_response_channel = f'{self.channel_prefix}/response/offer'
         if not check_for_connected_and_reply(self.redis, offer_response_channel,

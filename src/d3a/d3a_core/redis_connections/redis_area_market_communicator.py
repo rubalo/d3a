@@ -78,7 +78,7 @@ class ResettableCommunicator(RedisCommunicator):
         assert self.thread is None, \
             f"There has to be only one thread per ResettableCommunicator object, " \
             f" thread {self.thread} already exists."
-        self.pubsub.subscribe(**channel_callback_dict)
+        self.pb = self.pubsub.subscribe(**channel_callback_dict)
         thread = self.pubsub.run_in_thread(daemon=True)
         log.trace(f"Started thread for multiple channels: {thread}")
         self.thread = thread

@@ -52,7 +52,9 @@ class AggregatorHandler:
         self._add_batch_event(device_uuid, event, self.batch_finished_events)
 
     def aggregator_callback(self, payload):
+        print(f"aggregator_callback")
         message = json.loads(payload["data"])
+        print(f"message: {message}")
         if message["type"] == "CREATE":
             self._create_aggregator(message)
         elif message["type"] == "DELETE":

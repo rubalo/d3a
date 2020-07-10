@@ -42,6 +42,11 @@ class LoadExternalMixin(ExternalMixin):
             f'{self.channel_prefix}/list_bids': self._list_bids,
             f'{self.channel_prefix}/device_info': self._device_info,
         })
+        message = self.redis.redis_db.get(f'{self.channel_prefix}/register_participant')
+        print(f"load: {message}")
+        if message is not None:
+            self._register(json.loads(message))
+            self.redis.redis_db.delete(f'{self.channel_prefix}/register_participant')
 
     def _list_bids(self, payload):
         self._get_transaction_id(payload)
