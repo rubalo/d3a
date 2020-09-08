@@ -58,7 +58,7 @@ class SimulationEndpointBuffer:
             "percentage_completed": 0
         }
         self.should_export_plots = should_export_plots
-        self.market_unmatched_loads = MarketUnmatchedLoads(area)
+        self.market_unmatched_loads = MarketUnmatchedLoads(self.area_result_dict)
         self.price_energy_day = MarketPriceEnergyDay(should_export_plots)
         self.market_bills = MarketEnergyBills()
         self.cumulative_bills = CumulativeBills()
@@ -113,8 +113,7 @@ class SimulationEndpointBuffer:
             "status": self.status,
             "progress_info": self.simulation_progress,
             "kpi": self.kpi.performance_indices_redis,
-            "last_unmatched_loads": convert_pendulum_to_str_in_dict(
-                self.market_unmatched_loads.last_unmatched_loads, {}),
+            "last_unmatched_loads": self.market_unmatched_loads.last_unmatched_loads,
             "last_energy_trade_profile": convert_pendulum_to_str_in_dict(
                 self.trade_profile.traded_energy_current, {}, ui_format=True),
             "last_price_energy_day": convert_pendulum_to_str_in_dict(
@@ -131,8 +130,7 @@ class SimulationEndpointBuffer:
         return {
             "job_id": self.job_id,
             "random_seed": self.random_seed,
-            "unmatched_loads": convert_pendulum_to_str_in_dict(
-                self.market_unmatched_loads.unmatched_loads, {}),
+            "unmatched_loads": self.market_unmatched_loads.unmatched_loads,
             "price_energy_day": convert_pendulum_to_str_in_dict(
                 self.price_energy_day.csv_output, {}),
             "cumulative_grid_trades":
@@ -228,7 +226,9 @@ class SimulationEndpointBuffer:
 
         self.cumulative_bills.update_cumulative_bills(area)
 
-        self.market_unmatched_loads.update_unmatched_loads(area)
+        self.market_unmatched_loads.update_unmatched_loads(
+            self.area_result_dict, self.flattened_area_core_stats_dict, self.current_market
+        )
 
         self.device_statistics.update(area, self.area_result_dict,
                                       self.flattened_area_core_stats_dict)

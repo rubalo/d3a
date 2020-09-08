@@ -15,11 +15,12 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
+from typing import Dict  # NOQA
 from pendulum import duration
 from itertools import product
-from d3a.models.strategy.load_hours import LoadHoursStrategy
+from d3a.models.strategy.load_hours import LoadHoursStrategy  # NOQA
 from d3a_interface.constants_limits import GlobalConfig
-from d3a.constants import DATE_TIME_FORMAT, FLOATING_POINT_TOLERANCE
+from d3a.constants import DATE_TIME_FORMAT, FLOATING_POINT_TOLERANCE  # NOQA
 from d3a_interface.sim_results.aggregate_results import merge_unmatched_load_results_to_global
 
 DATE_HOUR_FORMAT = "YYYY-MM-DDTHH"
@@ -46,74 +47,69 @@ def hour_list():
 class ExportUnmatchedLoads:
     def __init__(self, area):
         self.hour_list = hour_list()
-        self.name_uuid_map = {area.name: area.uuid}
-        self.name_type_map = {area.name: area.display_type}
+        self.name_uuid_map = {area['name']: area['uuid']}
+        self.name_type_map = {area['name']: area['type']}
         self.area = area
         self.load_count = 0
         self.count_load_devices_in_setup(self.area)
 
-    @property
-    def latest_time_slot(self):
-        return self.area.current_market.time_slot \
-            if self.area.current_market is not None else self.hour_list[-1]
+    # @property
+    # def latest_time_slot(self):
+    #     return self.area.current_market.time_slot \
+    #         if self.area.current_market is not None else self.hour_list[-1]
 
     def count_load_devices_in_setup(self, area):
-        for child in area.children:
-            if isinstance(child.strategy, LoadHoursStrategy):
+        for child in area['children']:
+            if child['type'] == "LoadHoursStrategy":
                 self.load_count += 1
-            if child.children:
+            if child['children']:
                 self.count_load_devices_in_setup(child)
 
-    def get_current_market_results(self, all_past_markets=False):
+    def get_current_market_results(self, area={}, core_stats={}, all_past_markets=False):
         unmatched_loads = self.arrange_output(self.append_device_type(
             self.expand_to_ul_to_hours(
                 self.expand_ul_to_parents(
-                    self.find_unmatched_loads(self.area, {}, all_past_markets)[self.area.name],
-                    self.area.name, {}
-                ), all_past_markets)), self.area)
+                    self.find_unmatched_loads(area, core_stats, {},
+                                              all_past_markets)[area['name']],
+                    area['name'], {}
+                ), all_past_markets)), area)
 
         return unmatched_loads, self.change_name_to_uuid(unmatched_loads)
 
-    def find_unmatched_loads(self, area, indict, all_past_markets: bool):
+    def find_unmatched_loads(self, area, core_stats, indict, all_past_markets: bool):
         """
         Aggregates list of times for each unmatched time slot for each load
         """
-        indict[area.name] = {}
-        for child in area.children:
-            self.name_uuid_map[child.name] = child.uuid
-            self.name_type_map[child.name] = child.display_type
-            if child.children:
-                indict[area.name] = self.find_unmatched_loads(
-                    child, indict[area.name], all_past_markets
+        indict[area['name']] = {}
+        for child in area['children']:
+            self.name_uuid_map[child['name']] = child['uuid']
+            self.name_type_map[child['name']] = child['type']
+            if child['children']:
+                indict[area['name']] = self.find_unmatched_loads(
+                    child, core_stats, indict[area['name']], all_past_markets
                 )
             else:
-                if isinstance(child.strategy, LoadHoursStrategy):
-                    current_market = [child.parent.current_market] \
-                        if child.parent.current_market is not None \
-                        else []
-                    indict[area.name][child.name] = \
-                        self._calculate_unmatched_loads_leaf_area(
-                            child,
-                            child.parent.past_markets
-                            if all_past_markets is True
-                            else current_market
-                        )
+                if child['type'] in ["LoadHoursStrategy", "DefinedLoadStrategy",
+                                     "CellTowerLoadHoursStrategy"] and \
+                        core_stats[child['uuid']] != {}:
+                    indict[area['name']][child['name']] = \
+                        self._calculate_unmatched_loads_leaf_area(child, core_stats)
         return indict
 
     @classmethod
-    def _calculate_unmatched_loads_leaf_area(cls, area, markets):
+    def _calculate_unmatched_loads_leaf_area(cls, area, core_stats):
         """
         actually determines the unmatched loads
         """
         unmatched_times = []
-        for market in markets:
-            desired_energy_Wh = area.strategy.state.desired_energy_Wh[market.time_slot]
-            traded_energy_kWh = market.traded_energy[area.name] \
-                if market is not None and (area.name in market.traded_energy) \
-                else 0.0
-            deficit = desired_energy_Wh + traded_energy_kWh * 1000.0
-            if deficit > FLOATING_POINT_TOLERANCE:
-                unmatched_times.append(market.time_slot)
+        time_slot = list(core_stats[area['uuid']].keys())[0]
+
+        desired_energy_kWh = core_stats[area['uuid']][time_slot]['load_profile_kWh']
+        traded_energy_kWh = sum(trade['energy']
+                                for trade in core_stats[area['uuid']][time_slot]['trades'])
+        deficit = desired_energy_kWh + traded_energy_kWh
+        if deficit > FLOATING_POINT_TOLERANCE:
+            unmatched_times.append(time_slot)
         return {"unmatched_times": unmatched_times}
 
     def change_name_to_uuid(self, indict):
@@ -167,15 +163,15 @@ class ExportUnmatchedLoads:
         ul_count = 0
         for child_name, child_ul_list in indict.items():
             for time in child_ul_list:
-                if time.hour == slot_time.hour and \
-                   time.day == slot_time.day and \
-                   time.month == slot_time.month and \
-                   time.year == slot_time.year:
+                if int(time[11:13]) == int(slot_time[11:13]) and \
+                   int(time[8:10]) == int(slot_time[8:10]) and \
+                   int(time[5:7]) == int(slot_time[5:7]) and \
+                   int(time[:4]) == int(slot_time[:4]):
                     ul_count += 1
                     if child_name in hover_dict:
-                        hover_dict[child_name].append(time.format(DATE_TIME_FORMAT))
+                        hover_dict[child_name].append(time)
                     else:
-                        hover_dict[child_name] = [time.format(DATE_TIME_FORMAT)]
+                        hover_dict[child_name] = [time]
         if hover_dict == {}:
             return {"unmatched_count": 0}
         else:
@@ -187,6 +183,8 @@ class ExportUnmatchedLoads:
         """
         outdict = {}
         for node_name, subdict in indict.items():
+            # print(f"node_name: {node_name}")
+            # print(f"subdict: {subdict}")
             if all_past_markets:
                 outdict[node_name] = {}
                 for hour_time in self.hour_list:
@@ -209,12 +207,14 @@ class ExportUnmatchedLoads:
         return outdict
 
     def arrange_output(self, indict, area):
-        if area.children:
-            indict[area.name] = {}
-            for child in area.children:
-                if child.children or isinstance(child.strategy, LoadHoursStrategy):
-                    if child.name in indict:
-                        indict[area.name][child.name] = indict[child.name]
+        if area['children']:
+            indict[area['name']] = {}
+            for child in area['children']:
+                if child['children'] or \
+                        child['type'] in ["LoadHoursStrategy", "DefinedLoadStrategy",
+                                          "CellTowerLoadHoursStrategy"]:
+                    if child['name'] in indict:
+                        indict[area['name']][child['name']] = indict[child['name']]
                     self.arrange_output(indict, child)
         return indict
 
@@ -232,9 +232,9 @@ class MarketUnmatchedLoads:
         self.export_unmatched_loads = ExportUnmatchedLoads(area)
 
     def write_none_to_unmatched_loads(self, area):
-        self.unmatched_loads[area.name] = None
-        self.last_unmatched_loads[area.uuid] = None
-        for child in area.children:
+        self.unmatched_loads[area['name']] = None
+        self.last_unmatched_loads[area['uuid']] = None
+        for child in area['children']:
             self.write_none_to_unmatched_loads(child)
 
     def merge_unmatched_loads(self, current_results):
@@ -248,12 +248,18 @@ class MarketUnmatchedLoads:
             current_results, self.unmatched_loads
         )
 
-    def update_unmatched_loads(self, area):
+    def update_unmatched_loads(self, area={}, core_stats={}, current_market_time_slot=None):
+        if current_market_time_slot is None:
+            return
+        self.export_unmatched_loads.latest_time_slot = current_market_time_slot
         if self.export_unmatched_loads.load_count == 0:
             self.write_none_to_unmatched_loads(area)
         else:
             current_results, current_results_uuid = \
-                self.export_unmatched_loads.get_current_market_results()
+                self.export_unmatched_loads.get_current_market_results(area, core_stats)
 
             self.last_unmatched_loads = current_results_uuid
             self.merge_unmatched_loads(current_results)
+
+        # print(f"self.last_unmatched_load: {self.last_unmatched_loads}")
+        # print(f"self.unmatched_loads: {self.unmatched_loads}")
