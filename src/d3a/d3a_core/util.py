@@ -26,7 +26,7 @@ import inspect
 import os
 
 from click.types import ParamType
-from pendulum import duration, from_format
+from pendulum import duration, from_format, today
 from rex import rex
 from pkgutil import walk_packages
 from datetime import timedelta
@@ -36,7 +36,7 @@ from logging import LoggerAdapter, getLogger, getLoggerClass, addLevelName, setL
 from d3a import setup as d3a_setup
 from d3a_interface.constants_limits import ConstSettings
 from d3a_interface.exceptions import D3AException
-from d3a.constants import DATE_FORMAT
+from d3a.constants import DATE_FORMAT, TIME_ZONE
 from d3a_interface.constants_limits import GlobalConfig, RangeLimit
 from d3a_interface.utils import generate_market_slot_list_from_config, str_to_pendulum_datetime,\
     format_datetime
@@ -296,6 +296,8 @@ def read_settings_from_file(settings_file):
                 settings["basic_settings"].get('sim_duration', timedelta(hours=24))),
             "slot_length": IntervalType('M:S')(
                 settings["basic_settings"].get('slot_length', timedelta(minutes=15))),
+            "start_date": DateType(DATE_FORMAT)(
+                settings["basic_settings"].get('start_date', today(tz=TIME_ZONE).format(DATE_FORMAT))),
             "tick_length": IntervalType('M:S')(
                 settings["basic_settings"].get('tick_length', timedelta(seconds=15))),
             "market_count": settings["basic_settings"].get('market_count', 1),
